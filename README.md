@@ -1,36 +1,55 @@
-# Pet Store · Deland Junction
+# Pawfamily
 
-Website work for a Ragdoll cattery client.
+Website and owner dashboard for **Pawfamily**, a pet rescue and rehoming service. Rescued pets are matched with approved families for an adoption fee.
 
-## What's in this repository
+- **Live site:** deployed automatically to Netlify from `main`
+- **Planned domain:** `pawfamilyfreehome.com`
+- **Owner dashboard:** `/admin/`
 
-| Folder | What it is | Status |
-|---|---|---|
-| `ragdoll-site/` | **The cattery website.** 10 pages (home, kittens, kitten profiles, litters and waiting list, our cats, about, news, FAQ, contact) plus an owner dashboard. One file: `cattery-website.html`. | Latest. Demo data is saved in the visitor's browser. |
-| `ragdoll-proposal/` | Interactive proposal: website preview, owner dashboard demo, options, timeline and approval message. `ragdoll-proposal.html` is the standalone file to send to clients. | Sent to client for review |
-| `pet-store/` | First prototype: a general pet supplies shop with cart and checkout. | Early concept, kept for reference |
-| `reference/` | `chatgpt-dynamic-website.html`, the original concept the cattery site was based on. | Reference only |
+## What it does
 
-## Opening the files
+**Public website**: Home · Meet our pets (filters by type, sex, age) · individual pet pages with photos, story, health checklist and adoption fee · How to adopt with the online application · Happy tails · About · Ways to help (foster, volunteer, donate, rehoming) · FAQ · Contact · Privacy notice.
 
-Each site is a single HTML file. Double-click it to open it in a browser. The cattery website needs an internet connection for its photos and fonts.
+**Owner dashboard**: Secure sign-in · overview · add and edit pets with up to 8 photos (resized automatically) · one-click status (available, reserved, adopted, hidden) · adoption applications with stages and private notes · contact messages · adoption stories · site settings (name, contact, fees, announcement bar) · full JSON backup.
 
-**Owner dashboard demo login:** `owner@cattery-demo.com` / `ragdoll123` (link in the website footer).
+Optional email alerts for every application and message (via Resend).
 
-## Next step: the real hosted system
+## Project layout
 
-The plan for turning `ragdoll-site/` into a live system:
+```
+site/                  Static website (no build step)
+  index.html           Public site shell
+  admin/index.html     Owner dashboard shell (noindex)
+  assets/              styles.css, ui.js (shared), app.js (public), admin.js (dashboard)
+netlify/functions/
+  api.mjs              The whole API, one function at /api/*
+  lib/                 store (Netlify Blobs), auth, validation, email, http helpers
+scripts/
+  dev-server.mjs       Local server running the same API on a file store
+  hash-password.mjs    Generates the owner's login values for Netlify
+tests/
+  api.test.mjs         API + security tests (node --test)
+  e2e.mjs              Full browser test with Playwright
+docs/
+  DESIGN.md            Requirements, architecture, API, security, pre-mortem
+  SETUP.md             Go-live steps (environment variables, email, domain)
+archive/               Earlier demos and proposal (not deployed)
+.claude/skills/        Project skills for Claude (see THIRD_PARTY_NOTICES.md)
+```
 
-- **Hosting:** Netlify (free), deployed automatically from this repository on every push (settings in `netlify.toml`)
-- **Database, secure login and photo storage:** Supabase (free tier)
-- **Enquiry and waiting-list email alerts:** Resend (free tier)
+## Go live
 
-**Before going public,** replace all placeholders (`[CATTERY NAME]`, `[Town]`, contact details) and remove the sample kittens, reviews and health results.
+See **[docs/SETUP.md](docs/SETUP.md)**. In short: run `npm run hash-password -- "password"`, add `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH` and `SESSION_SECRET` in Netlify, and redeploy.
 
-## Live addresses (once deployed on Netlify)
+## Develop and test
 
-| Address | Shows |
-|---|---|
-| `/` | The cattery website |
-| `/proposal` | The interactive proposal |
-| `/pet-store` | The first pet store prototype |
+```bash
+npm install
+npm run dev          # http://localhost:8888
+npm test             # 11 API and security tests
+npm run test:e2e     # 15 browser checks (requires Playwright)
+```
+
+## Security summary
+
+scrypt-hashed owner password (from env, never in code) · signed `HttpOnly` `SameSite=Strict` session cookie · login lockout after 5 failures · CSRF protection (custom header and Origin check) · server-side validation on every field · honeypot and rate limits on public forms · photo uploads verified by file signature · strict Content-Security-Policy with no inline scripts · all user content escaped. Details in [docs/DESIGN.md](docs/DESIGN.md#4-security-frontend-backend-and-security-perspectives).

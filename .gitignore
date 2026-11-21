@@ -1,6 +1,9 @@
 .DS_Store
 Thumbs.db
 node_modules/
+.data/
+.netlify/
 .env
 .env.*
 *.log
+test-results/
