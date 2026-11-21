@@ -1,0 +1,24 @@
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/"
+  to = "/ragdoll-site/cattery-website.html"
+  status = 200
+
+[[redirects]]
+  from = "/proposal"
+  to = "/ragdoll-proposal/ragdoll-proposal.html"
+  status = 200
+
+[[redirects]]
+  from = "/pet-store"
+  to = "/pet-store/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "SAMEORIGIN"
