@@ -21,8 +21,16 @@ Each site is a single HTML file. Double-click it to open it in a browser. The ca
 
 The plan for turning `ragdoll-site/` into a live system:
 
-- **Hosting:** Netlify (free), deployed automatically from this repository
+- **Hosting:** Vercel, deployed automatically from this repository on every push (see `vercel.json`)
 - **Database, secure login and photo storage:** Supabase (free tier)
 - **Enquiry and waiting-list email alerts:** Resend (free tier)
 
 **Before going public,** replace all placeholders (`[CATTERY NAME]`, `[Town]`, contact details) and remove the sample kittens, reviews and health results.
+
+## Live addresses (once deployed on Vercel)
+
+| Address | Shows |
+|---|---|
+| `/` | The cattery website |
+| `/proposal` | The interactive proposal |
+| `/pet-store` | The first pet store prototype |
