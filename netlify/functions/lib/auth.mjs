@@ -1,5 +1,10 @@
-// Owner authentication: scrypt password hash from env, HMAC-signed session cookie.
-import { createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
+// Owner authentication.
+// Credentials come from one of two places:
+//   1. "netlify":   ADMIN_EMAIL + ADMIN_PASSWORD_HASH environment variables (initial setup, and the recovery route)
+//   2. "dashboard": set by the owner in Settings > Security, stored hashed in Blobs under auth/credentials
+// Dashboard credentials only apply while ADMIN_PASSWORD_HASH is unchanged. Replacing it in Netlify is a full reset.
+// Sessions are HMAC-signed cookies carrying a credentials version, so changing the password signs out every other device.
+import { createHash, createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { HttpError } from "./http.mjs";
 
@@ -7,6 +12,7 @@ const scrypt = promisify(scryptCb);
 const COOKIE = "pf_session";
 const SESSION_HOURS = 8;
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64 };
+export const CREDENTIALS_KEY = "auth/credentials";
 
 export async function hashPassword(password) {
   const salt = randomBytes(16);
@@ -24,21 +30,35 @@ export async function verifyPassword(password, stored) {
   return expected.length === key.length && timingSafeEqual(expected, key);
 }
 
-export function authConfig() {
-  const email = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
-  const hash = (process.env.ADMIN_PASSWORD_HASH || "").trim();
-  const secret = process.env.SESSION_SECRET || "";
-  return { email, hash, secret, configured: Boolean(email && hash.startsWith("scrypt$") && secret.length >= 32) };
+function envConfig() {
+  return {
+    email: (process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+    hash: (process.env.ADMIN_PASSWORD_HASH || "").trim(),
+    secret: process.env.SESSION_SECRET || "",
+  };
+}
+
+/** Resolve the owner's current credentials. `data` is the Blobs/file store. */
+export async function getCredentials(data) {
+  const env = envConfig();
+  if (env.secret.length < 32) return { configured: false };
+  const fp = env.hash ? createHash("sha256").update(env.hash).digest("hex").slice(0, 16) : "";
+  const stored = await data.getJSON(CREDENTIALS_KEY);
+  if (stored && stored.envFingerprint === fp && String(stored.hash).startsWith("scrypt$") && stored.email) {
+    return { configured: true, source: "dashboard", email: stored.email, hash: stored.hash, version: `d${stored.version}`, fp, storedVersion: stored.version, updatedAt: stored.updatedAt };
+  }
+  if (env.email && env.hash.startsWith("scrypt$")) {
+    return { configured: true, source: "netlify", email: env.email, hash: env.hash, version: `e${fp}`, fp, storedVersion: stored?.envFingerprint === fp ? stored.version : 0 };
+  }
+  return { configured: false };
 }
 
 const b64url = buf => Buffer.from(buf).toString("base64url");
-const sign = (payload, secret) => createHmac("sha256", secret).update(payload).digest("base64url");
+const sign = payload => createHmac("sha256", envConfig().secret).update(payload).digest("base64url");
 
-export function createSessionCookie(req) {
-  const { secret } = authConfig();
-  const payload = b64url(JSON.stringify({ sub: "owner", exp: Date.now() + SESSION_HOURS * 3600e3, n: b64url(randomBytes(8)) }));
-  const value = `${payload}.${sign(payload, secret)}`;
-  return `${COOKIE}=${value}; ${cookieAttrs(req)}; Max-Age=${SESSION_HOURS * 3600}`;
+export function createSessionCookie(req, version) {
+  const payload = b64url(JSON.stringify({ sub: "owner", v: version, exp: Date.now() + SESSION_HOURS * 3600e3, n: b64url(randomBytes(8)) }));
+  return `${COOKIE}=${payload}.${sign(payload)}; ${cookieAttrs(req)}; Max-Age=${SESSION_HOURS * 3600}`;
 }
 export const clearSessionCookie = req => `${COOKIE}=; ${cookieAttrs(req)}; Max-Age=0`;
 function cookieAttrs(req) {
@@ -46,19 +66,18 @@ function cookieAttrs(req) {
   return `Path=/api; HttpOnly; SameSite=Strict${secure}`;
 }
 
-export function readSession(req) {
-  const { secret, configured } = authConfig();
-  if (!configured) return null;
+/** Returns the session payload if the cookie is valid, unexpired and matches the current credentials version. */
+export function readSession(req, creds) {
+  if (!creds?.configured) return null;
   const raw = (req.headers.get("cookie") || "").split(";").map(c => c.trim()).find(c => c.startsWith(COOKIE + "="));
   if (!raw) return null;
   const [payload, mac] = raw.slice(COOKIE.length + 1).split(".");
   if (!payload || !mac) return null;
-  const expected = Buffer.from(sign(payload, secret));
-  const given = Buffer.from(mac);
+  const expected = Buffer.from(sign(payload)), given = Buffer.from(mac);
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
   try {
     const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    return data.sub === "owner" && data.exp > Date.now() ? data : null;
+    return data.sub === "owner" && data.exp > Date.now() && data.v === creds.version ? data : null;
   } catch { return null; }
 }
 
@@ -68,9 +87,9 @@ export function assertSameOrigin(req) {
   if (origin && origin !== new URL(req.url).origin) throw new HttpError(403, "Request blocked: it came from another website.");
 }
 
-/** Admin gate: valid session, custom header (forces CORS preflight cross-site), same origin. */
-export function requireAdmin(req) {
+/** Admin gate: custom header (forces a CORS preflight cross-site), same origin, valid session. */
+export function requireAdmin(req, creds) {
   if (req.headers.get("x-requested-with") !== "pawfamily") throw new HttpError(403, "Request blocked.");
   assertSameOrigin(req);
-  if (!readSession(req)) throw new HttpError(401, "Please sign in again.");
+  if (!readSession(req, creds)) throw new HttpError(401, "Please sign in again.");
 }

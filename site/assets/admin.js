@@ -31,7 +31,7 @@ function renderLogin(notice = "") {
     const errs = {}; if (!d.email.trim()) errs.email = "Enter your email."; if (!d.password) errs.password = "Enter your password.";
     formError(form, ""); if (showFieldErrors(form, errs)) return;
     const btn = $("button", form); busy(btn, true, "Signing in…");
-    try { await api("/api/auth/login", { method: "POST", body: d }); me.signedIn = true; location.hash = "#overview"; route(); }
+    try { await api("/api/auth/login", { method: "POST", body: d }); me = await api("/api/auth/me"); location.hash = "#overview"; route(); }
     catch (err) { busy(btn, false); formError(form, err.message); form.password.value = ""; form.password.focus(); }
   });
   $("#login-email").focus();
@@ -61,6 +61,7 @@ async function vOverview() {
       <a class="stat" href="#messages"><b>${s.messages.new}</b><span>New messages</span></a>
       <a class="stat" href="#pets"><b>${s.animals.available}</b><span>Pets available</span></a>
       <a class="stat" href="#pets"><b>${s.animals.reserved}</b><span>Reserved</span></a></div>
+    ${me.source === "netlify" ? `<div class="setup-note"><b>You're signed in with the temporary password.</b> Set your own email and password in <a class="link" href="#settings">Settings → Security</a>. It takes a minute.</div><br>` : ""}
     ${!settings.email || !settings.town ? `<div class="setup-note">Finish your setup: add your contact email and town in <a class="link" href="#settings">Settings</a> so adopters can find you.</div><br>` : ""}
     <div class="box"><h2>Latest applications <a class="link" href="#applications">View all</a></h2>
       ${s.recentApplications.length ? `<ul class="list">${s.recentApplications.map(a => `<li class="text"><div><b class="t">${esc(a.name)}</b> <span class="pill ${esc(a.status)}">${esc(LABELS.appStatus[a.status])}</span>
@@ -279,13 +280,45 @@ async function vSettings() {
         ${field(f, "feeIncludes", "What the fee includes", `<textarea <CONTROL maxlength="400">${esc(s.feeIncludes)}</textarea>`, { optional: true })}</fieldset>
       <fieldset><legend>Announcement bar</legend>
         ${inp("announcement", "Message at the top of every page", { optional: true, hint: "For example: 'Kitten season is here: 6 kittens looking for homes'. Leave blank to hide." }, 'maxlength="160"')}</fieldset>
-      <div><button class="btn" type="submit">Save settings</button></div></form></div></div>`);
+      <div><button class="btn" type="submit">Save settings</button></div></form></div></div>
+    <div class="box" id="securityBox"><h2>Security: sign-in email and password</h2><div class="pad" id="securityPad"><div class="loading" role="status"><div class="spinner"></div></div></div></div>`);
+  renderSecurity();
   const form = $("#" + f);
   form.addEventListener("submit", async e => {
     e.preventDefault();
     const btn = $("button[type=submit]", form); busy(btn, true); formError(form, "");
     try { settings = (await guarded(() => A("/api/admin/settings", { method: "PUT", body: Object.fromEntries(new FormData(form)) }))).settings; busy(btn, false); showFieldErrors(form, {}); toast("Settings saved"); renderBrand(); }
     catch (err) { busy(btn, false); showFieldErrors(form, err.fields); formError(form, err.message); }
+  });
+}
+
+async function renderSecurity() {
+  const sec = await guarded(() => A("/api/admin/security")); if (!sec) return;
+  const f = "security";
+  $("#securityPad").innerHTML = `
+    ${sec.source === "netlify" ? `<div class="setup-note">You're using the <b>temporary</b> sign-in details. Choose your own below. Once you do, only you will know your password.</div><br>` : `<p class="muted">Last changed ${esc(fmtDateTime(sec.updatedAt))}.</p><br>`}
+    <form class="stack" id="${f}" novalidate>
+      ${field(f, "newEmail", "Sign-in email", `<input <CONTROL type="email" autocomplete="username" maxlength="200" value="${esc(sec.email)}">`, { hint: "The email you use to sign in here. It isn't shown on the website." })}
+      <div class="row2">${field(f, "newPassword", "New password", `<input <CONTROL type="password" autocomplete="new-password" maxlength="200">`, { optional: true, hint: "At least 12 characters. A short sentence is easy to remember and hard to guess." })}
+        ${field(f, "confirmPassword", "Repeat new password", `<input <CONTROL type="password" autocomplete="new-password" maxlength="200">`, { optional: true })}</div>
+      ${field(f, "currentPassword", "Current password", `<input <CONTROL type="password" autocomplete="current-password" maxlength="200">`, { hint: "Needed to confirm it's you." })}
+      <div><button class="btn" type="submit">Update sign-in details</button></div>
+      <p class="hint">Changing your password signs out every other device. Forgotten it? Whoever manages your Netlify account can reset it (see docs/SETUP.md).</p></form>`;
+  const form = $("#" + f);
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(form)), errs = {};
+    if (!d.currentPassword) errs.currentPassword = "Enter your current password.";
+    if (d.newPassword && d.newPassword.length < 12) errs.newPassword = "Use at least 12 characters.";
+    else if (d.newPassword && d.newPassword !== d.confirmPassword) errs.confirmPassword = "The two new passwords don't match.";
+    formError(form, ""); if (showFieldErrors(form, errs)) return;
+    const btn = $("button[type=submit]", form); busy(btn, true);
+    try {
+      const res = await guarded(() => A("/api/admin/security", { method: "PUT", body: d })); if (!res) return;
+      me.source = "dashboard";
+      toast(res.passwordChanged ? "Password changed. Other devices have been signed out." : "Sign-in email updated.");
+      renderSecurity();
+    } catch (err) { busy(btn, false); form.currentPassword.value = ""; showFieldErrors(form, err.fields); formError(form, err.message); }
   });
 }
 

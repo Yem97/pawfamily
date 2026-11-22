@@ -50,9 +50,13 @@ Even without email, every application and message is saved in the dashboard.
 
 Once `pawfamilyfreehome.com` is bought: Netlify → **Domain management → Add a domain**, and follow the DNS instructions. HTTPS is issued automatically and free.
 
-## Changing the password
+## Changing the password (owner)
 
-Run step 1 again with the new password, replace `ADMIN_PASSWORD_HASH` in Netlify, and redeploy. To sign out every device at once, also replace `SESSION_SECRET`.
+Dashboard → **Settings → Security**: enter a new sign-in email and/or password (12+ characters) and the current password. This signs out every other device. The new password is stored hashed in the site's storage, and nobody else knows it.
+
+## Forgotten password (reset)
+
+Whoever manages the Netlify account: run step 1 with a new temporary password, replace `ADMIN_PASSWORD_HASH` (and `ADMIN_EMAIL` if needed) in Netlify, and redeploy. Replacing the hash **always overrides** the password set in the dashboard, so the owner can sign in with the temporary details and choose a new password in Settings → Security. To sign out every device at once, also replace `SESSION_SECRET`.
 
 ## Backups
 

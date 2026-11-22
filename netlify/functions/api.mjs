@@ -2,7 +2,7 @@
 import { randomBytes } from "node:crypto";
 import { getStores, listRecords } from "./lib/store.mjs";
 import { HttpError, ok, fail, readJson, clientKey, nowIso } from "./lib/http.mjs";
-import { authConfig, verifyPassword, createSessionCookie, clearSessionCookie, readSession, requireAdmin, assertSameOrigin } from "./lib/auth.mjs";
+import { getCredentials, hashPassword, verifyPassword, createSessionCookie, clearSessionCookie, readSession, requireAdmin, assertSameOrigin, CREDENTIALS_KEY } from "./lib/auth.mjs";
 import { rules as r, validate } from "./lib/validate.mjs";
 import { notifyOwner } from "./lib/email.mjs";
 
@@ -188,9 +188,8 @@ async function getImage(id, { images }) {
   } });
 }
 
-async function login(req, ctx) {
+async function login(req, ctx, cfg) {
   assertSameOrigin(req);
-  const cfg = authConfig();
   if (!cfg.configured) return fail(503, "Sign-in isn't set up yet. Add ADMIN_EMAIL, ADMIN_PASSWORD_HASH and SESSION_SECRET in Netlify (see docs/SETUP.md).");
   const body = await readJson(req, 4096);
   const limiter = await rateLimit(ctx.data, "login", clientKey(req, ctx.context), 5, 15 * 60e3);
@@ -201,7 +200,7 @@ async function login(req, ctx) {
     return fail(401, "That email and password don't match.");
   }
   await limiter.clear();
-  return ok({}, { "set-cookie": createSessionCookie(req) });
+  return ok({}, { "set-cookie": createSessionCookie(req, cfg.version) });
 }
 
 /* Admin CRUD helpers */
@@ -324,6 +323,36 @@ async function adminExport({ data }) {
     { "content-disposition": `attachment; filename="pawfamily-backup-${date}.json"` });
 }
 
+/* Owner changes their sign-in email and/or password (Settings > Security). */
+async function adminSecurity(req, ctx, creds) {
+  if (req.method === "GET") return ok({ email: creds.email, source: creds.source, updatedAt: creds.updatedAt || null });
+  if (req.method !== "PUT") return fail(405, "Method not allowed.");
+  const body = await readJson(req, 4096);
+  const limiter = await rateLimit(ctx.data, "security", clientKey(req, ctx.context), 5, 15 * 60e3);
+  const currentOk = await verifyPassword(String(body.currentPassword || "").slice(0, 200), creds.hash);
+  if (!currentOk) {
+    await limiter.hit();
+    throw new HttpError(422, "Please check the highlighted fields.", { currentPassword: "That isn't your current password." });
+  }
+  const v = validate(body, { newEmail: r.email() });
+  const newPassword = String(body.newPassword || "");
+  const fields = {};
+  if (newPassword) {
+    if (newPassword.length < 12) fields.newPassword = "Use at least 12 characters.";
+    else if (newPassword.length > 200) fields.newPassword = "Use 200 characters or fewer.";
+    else if (newPassword === String(body.currentPassword)) fields.newPassword = "Choose a password different from your current one.";
+    else if (newPassword !== String(body.confirmPassword || "")) fields.confirmPassword = "The two new passwords don't match.";
+  }
+  if (Object.keys(fields).length) throw new HttpError(422, "Please check the highlighted fields.", fields);
+  if (!newPassword && v.newEmail === creds.email) throw new HttpError(422, "Nothing to change. Enter a new password or a new email.");
+  const version = (creds.storedVersion || 0) + 1;
+  const rec = { email: v.newEmail, hash: newPassword ? await hashPassword(newPassword) : creds.hash, version, envFingerprint: creds.fp, updatedAt: nowIso() };
+  await ctx.data.setJSON(CREDENTIALS_KEY, rec);
+  await limiter.clear();
+  // Keep this device signed in with the new version; every other session is now invalid.
+  return ok({ email: rec.email, passwordChanged: Boolean(newPassword) }, { "set-cookie": createSessionCookie(req, `d${version}`) });
+}
+
 /* ---------------- router ---------------- */
 export default async function handler(req, context) {
   try {
@@ -353,14 +382,20 @@ async function route(req, context) {
       if (resource === "messages" && m === "POST") return submitMessage(req, ctx);
     }
 
+    const needsAuth = area === "auth" || area === "admin";
+    const creds = needsAuth ? await getCredentials(stores.data) : null;
+
     if (area === "auth") {
-      if (resource === "login" && m === "POST") return login(req, ctx);
+      if (resource === "login" && m === "POST") return login(req, ctx, creds);
       if (resource === "logout" && m === "POST") { assertSameOrigin(req); return ok({}, { "set-cookie": clearSessionCookie(req) }); }
-      if (resource === "me" && m === "GET") return ok({ signedIn: Boolean(readSession(req)), configured: authConfig().configured });
+      if (resource === "me" && m === "GET") {
+        const signedIn = Boolean(readSession(req, creds));
+        return ok({ signedIn, configured: creds.configured, ...(signedIn ? { source: creds.source } : {}) });
+      }
     }
 
     if (area === "admin") {
-      requireAdmin(req);
+      requireAdmin(req, creds);
       switch (resource) {
         case "summary": if (m === "GET") return adminSummary(stores); break;
         case "animals": return adminAnimals(req, ctx, id);
@@ -370,6 +405,7 @@ async function route(req, context) {
         case "stories": return adminStories(req, ctx, id);
         case "settings": return adminSettings(req, stores);
         case "export": if (m === "GET") return adminExport(stores); break;
+        case "security": return adminSecurity(req, ctx, creds);
       }
     }
     return fail(404, "Not found.");

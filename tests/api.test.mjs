@@ -157,3 +157,44 @@ test("unknown routes return JSON 404, not a crash", async () => {
   assert.equal(r.status, 404);
   assert.equal(r.body.ok, false);
 });
+
+test("security: change password and email, sign out other devices, Netlify reset still works", async () => {
+  const login = (email, password) => call("POST", "/api/auth/login", { email, password });
+  const first = await login("owner@example.com", "correct horse battery");
+  assert.equal(first.status, 200);
+  cookie = first.headers.get("set-cookie").split(";")[0];
+  const otherDevice = (await login("owner@example.com", "correct horse battery")).headers.get("set-cookie").split(";")[0];
+
+  const info = await call("GET", "/api/admin/security", undefined, { auth: true });
+  assert.equal(info.body.source, "netlify");
+  assert.equal(info.body.email, "owner@example.com");
+
+  const wrong = await call("PUT", "/api/admin/security", { currentPassword: "nope", newEmail: "owner@example.com", newPassword: "a brand new password", confirmPassword: "a brand new password" }, { auth: true });
+  assert.equal(wrong.status, 422); assert.ok(wrong.body.fields.currentPassword);
+  const short = await call("PUT", "/api/admin/security", { currentPassword: "correct horse battery", newEmail: "owner@example.com", newPassword: "short", confirmPassword: "short" }, { auth: true });
+  assert.ok(short.body.fields.newPassword);
+  const mismatch = await call("PUT", "/api/admin/security", { currentPassword: "correct horse battery", newEmail: "owner@example.com", newPassword: "a brand new password", confirmPassword: "different one here" }, { auth: true });
+  assert.ok(mismatch.body.fields.confirmPassword);
+  const nothing = await call("PUT", "/api/admin/security", { currentPassword: "correct horse battery", newEmail: "owner@example.com" }, { auth: true });
+  assert.equal(nothing.status, 422);
+
+  const changed = await call("PUT", "/api/admin/security", { currentPassword: "correct horse battery", newEmail: "Her.Own@Example.com", newPassword: "a brand new password", confirmPassword: "a brand new password" }, { auth: true });
+  assert.equal(changed.status, 200);
+  assert.equal(changed.body.email, "her.own@example.com");
+  const oldCookie = cookie;
+  cookie = changed.headers.get("set-cookie").split(";")[0];
+
+  assert.equal((await call("GET", "/api/admin/summary", undefined, { auth: true })).status, 200, "this device stays signed in");
+  assert.equal((await call("GET", "/api/admin/summary", undefined, { headers: { cookie: oldCookie, "x-requested-with": "pawfamily" } })).status, 401, "old session ended");
+  assert.equal((await call("GET", "/api/admin/summary", undefined, { headers: { cookie: otherDevice, "x-requested-with": "pawfamily" } })).status, 401, "other device signed out");
+  assert.equal((await login("owner@example.com", "correct horse battery")).status, 401, "temporary credentials no longer work");
+  assert.equal((await login("her.own@example.com", "a brand new password")).status, 200, "new credentials work");
+  assert.equal((await call("GET", "/api/admin/security", undefined, { auth: true })).body.source, "dashboard");
+  const exp = await call("GET", "/api/admin/export", undefined, { auth: true });
+  assert.ok(!JSON.stringify(exp.body).includes("scrypt$"), "password hash never appears in the backup");
+
+  // Recovery: replacing ADMIN_PASSWORD_HASH in Netlify overrides the dashboard credentials.
+  process.env.ADMIN_PASSWORD_HASH = await hashPassword("emergency reset 2026");
+  assert.equal((await login("her.own@example.com", "a brand new password")).status, 401);
+  assert.equal((await login("owner@example.com", "emergency reset 2026")).status, 200);
+});

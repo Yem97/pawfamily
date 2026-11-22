@@ -148,6 +148,25 @@ await page.goto(BASE + "/adopt"); await page.waitForSelector(".card"); assert.eq
 assert.ok(await page.isVisible("#nav a[href='/happy-tails']"), "Happy tails link appears once a story exists");
 await page.goto(BASE + "/happy-tails"); await page.waitForSelector(".story"); step("adopted pets leave the site; stories publish");
 
+// 10b. Owner replaces the temporary sign-in details from the dashboard
+await admin.goto(BASE + "/admin/#overview"); await admin.waitForSelector(".stats");
+assert.ok(await admin.isVisible("text=signed in with the temporary password"));
+await admin.goto(BASE + "/admin/#settings"); await admin.waitForSelector("#security");
+await admin.fill("#security-newPassword", "short"); await admin.fill("#security-currentPassword", PASSWORD);
+await admin.click("#security button[type=submit]"); await admin.waitForSelector("#err-security-newPassword:not(:empty)");
+await admin.fill("#security-newEmail", "her.own@pawfamily.test"); await admin.fill("#security-newPassword", "my own lovely password");
+await admin.fill("#security-confirmPassword", "my own lovely password"); await admin.fill("#security-currentPassword", "wrong password");
+await admin.click("#security button[type=submit]"); await admin.waitForSelector("#err-security-currentPassword:not(:empty)");
+await admin.fill("#security-newPassword", "my own lovely password"); await admin.fill("#security-confirmPassword", "my own lovely password");
+await admin.fill("#security-currentPassword", PASSWORD); await admin.click("#security button[type=submit]");
+await admin.waitForSelector("text=Last changed"); await admin.screenshot({ path: path.join(SHOTS, "12-admin-security.png"), fullPage: true });
+await admin.click("#logout"); await admin.waitForSelector("#login");
+await admin.fill("#login-email", "owner@pawfamily.test"); await admin.fill("#login-password", PASSWORD); await admin.click("#login button");
+await admin.waitForSelector(".form-error"); // temporary details no longer work
+await admin.fill("#login-email", "her.own@pawfamily.test"); await admin.fill("#login-password", "my own lovely password"); await admin.click("#login button");
+await admin.waitForSelector(".stats"); assert.ok(!(await admin.isVisible("text=signed in with the temporary password")));
+step("owner sets own email + password; temporary details stop working; reminder disappears");
+
 // 11. Backup, logout, session gone
 const [dl] = await Promise.all([admin.waitForEvent("download"), (async () => { await admin.goto(BASE + "/admin/#backup"); await admin.click("#downloadBackup"); })()]);
 assert.match(dl.suggestedFilename(), /^pawfamily-backup-\d{4}-\d{2}-\d{2}\.json$/);
