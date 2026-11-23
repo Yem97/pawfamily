@@ -45,9 +45,10 @@ const ICO = {
   messages: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v12H5.2L4 17.2z"/></svg>',
   more: '<svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
 };
-const NAV = [["overview", "Overview"], ["pets", "Pets"], ["applications", "Applications"], ["messages", "Messages"], ["stories", "Happy tails", "desk"], ["settings", "Settings", "desk"], ["backup", "Backup", "desk"], ["more", "More", "phone"]];
-const MORE_VIEWS = ["stories", "settings", "backup", "more"];
-let counts = { applications: 0, messages: 0 };
+const NAV = [["overview", "Overview"], ["pets", "Pets"], ["applications", "Applications"], ["messages", "Messages"], ["stories", "Happy tails", "desk"], ["waitlist", "Waiting list", "desk"], ["visitors", "Visitors", "desk"], ["settings", "Settings", "desk"], ["backup", "Backup", "desk"], ["more", "More", "phone"]];
+const MORE_VIEWS = ["stories", "waitlist", "visitors", "settings", "backup", "more"];
+let counts = { applications: 0, messages: 0, stories: 0, more: 0 };
+let summary = null;
 function shell(view, html) {
   $("#topActions").innerHTML = `<a class="btn light sm" href="/" target="_blank" rel="noopener">View website ↗</a><button class="btn sm" type="button" id="logout">Sign out</button>`;
   const current = id => id === view || (id === "more" && MORE_VIEWS.includes(view));
@@ -57,7 +58,8 @@ function shell(view, html) {
 }
 async function refreshCounts() {
   const s = await A("/api/admin/summary");
-  counts = { applications: s.applications.new, messages: s.messages.new };
+  summary = s;
+  counts = { applications: s.applications.new, messages: s.messages.new, stories: s.stories.pending, more: s.stories.pending };
   return s;
 }
 
@@ -72,6 +74,8 @@ async function vOverview() {
       <a class="stat" href="#pets"><b>${s.animals.available}</b><span>Pets available</span></a>
       <a class="stat" href="#pets"><b>${s.animals.reserved}</b><span>Reserved</span></a></div>
     ${me.source === "netlify" ? `<div class="setup-note"><b>You're signed in with the temporary password.</b> Set your own email and password in <a class="link" href="#settings">Settings → Security</a>. It takes a minute.</div><br>` : ""}
+    ${s.stories.pending ? `<div class="setup-note"><b>${s.stories.pending} happy tail${s.stories.pending === 1 ? "" : "s"} waiting for your approval.</b> <a class="link" href="#stories">Review now</a></div><br>` : ""}
+    ${!s.email.owner ? `<div class="setup-note">Email alerts are off, so you won't be emailed about new applications. Check here regularly, or set up email (see docs/SETUP.md).</div><br>` : ""}
     ${!settings.email || !settings.town ? `<div class="setup-note">Finish your setup: add your contact email and town in <a class="link" href="#settings">Settings</a> so adopters can find you.</div><br>` : ""}
     <div class="box"><h2>Latest applications <a class="link" href="#applications">View all</a></h2>
       ${s.recentApplications.length ? `<ul class="list">${s.recentApplications.map(a => `<li class="text"><div><b class="t">${esc(a.name)}</b> <span class="pill ${esc(a.status)}">${esc(LABELS.appStatus[a.status])}</span>
@@ -183,9 +187,10 @@ function petEditor(id) {
     if (!body.name.trim()) { showFieldErrors(form, { name: "Give the pet a name." }); return; }
     const btn = $(`button[form="${f}"]`); busy(btn, true);
     try {
-      await guarded(() => A(existing ? `/api/admin/animals/${existing.id}` : "/api/admin/animals", { method: existing ? "PUT" : "POST", body }));
+      const res = await guarded(() => A(existing ? `/api/admin/animals/${existing.id}` : "/api/admin/animals", { method: existing ? "PUT" : "POST", body }));
       editorUploads = new Set(); dlg.close();
-      toast(existing ? `${body.name} saved` : `${body.name} added to the website`);
+      const alerted = res?.alerted ? `. ${res.alerted} ${res.alerted === 1 ? "person" : "people"} on the waiting list emailed` : "";
+      toast((existing ? `${body.name} saved` : `${body.name} added to the website`) + alerted);
       if (location.hash === "#pets") vPets(); else location.hash = "#pets";
     } catch (err) { busy(btn, false); showFieldErrors(form, err.fields); formError(form, err.message); }
   });
@@ -233,9 +238,10 @@ async function vStories() {
   await refreshCounts();
   stories = (await A("/api/admin/stories")).stories;
   shell("stories", `<div class="a-head"><div><h1>Happy tails</h1><p>Adoption success stories. Published stories appear on the website and build trust with new adopters.</p></div><button class="btn sm" type="button" data-edit-story="new">+ Add a story</button></div>
-    <div class="box">${stories.length ? `<ul class="list">${stories.map(s => `<li>${photo(s.photo, s.title, { thumb: true })}<div><b class="t">${esc(s.title)}</b> <span class="pill ${s.published ? "published" : "draft"}">${s.published ? "Published" : "Draft"}</span>
-      <div class="s">${esc(s.animalName || "")}${s.animalName ? " · " : ""}${esc(fmtDate(s.createdAt))}</div></div>
-      <div class="ctrl"><button class="btn light sm" type="button" data-edit-story="${esc(s.id)}">Edit</button><button class="btn danger sm" type="button" data-delete-story="${esc(s.id)}">Delete</button></div></li>`).join("")}</ul>`
+    <div class="box">${stories.length ? `<ul class="list">${[...stories].sort((a, b) => (b.submitted && !b.published) - (a.submitted && !a.published)).map(s => `<li>${photo(s.photo, s.title, { thumb: true })}<div><b class="t">${esc(s.title)}</b> <span class="pill ${s.published ? "published" : s.submitted ? "new" : "draft"}">${s.published ? "Published" : s.submitted ? "Waiting for approval" : "Draft"}</span>
+      <div class="s">${esc(s.animalName || "")}${s.animalName ? " · " : ""}${esc(fmtDate(s.createdAt))}${s.submittedBy ? ` · sent by ${esc(s.submittedBy.name)} (${esc(s.submittedBy.email)})` : ""}</div>
+      ${s.submitted && !s.published ? `<div class="msg">${esc(s.body)}</div>` : ""}</div>
+      <div class="ctrl">${s.submitted && !s.published ? `<button class="btn sm" type="button" data-approve-story="${esc(s.id)}">Approve &amp; publish</button>` : ""}<button class="btn light sm" type="button" data-edit-story="${esc(s.id)}">Edit</button><button class="btn danger sm" type="button" data-delete-story="${esc(s.id)}">Delete</button></div></li>`).join("")}</ul>`
       : `<div class="pad muted">No stories yet. When a pet settles into their new home, ask the family for a photo and a few words.</div>`}</div>`);
 }
 function storyEditor(id) {
@@ -333,12 +339,43 @@ async function renderSecurity() {
   });
 }
 
+/* ---------------- waiting list ---------------- */
+async function vWaitlist() {
+  await refreshCounts();
+  const { waitlist, emailReady } = await A("/api/admin/waitlist");
+  const want = w => [w.sex === "any" ? "" : LABELS.sex[w.sex], w.ageGroup === "any" ? "" : LABELS.age[w.ageGroup].toLowerCase(), w.species === "any" ? "any pet" : LABELS.species[w.species].toLowerCase()].filter(Boolean).join(" ");
+  shell("waitlist", `<div class="a-head"><div><h1>Waiting list</h1><p>People who asked to be emailed when a matching pet arrives. When you list a pet as Available, matching people are emailed automatically, once.</p></div></div>
+    ${emailReady ? "" : `<div class="setup-note"><b>Alerts are switched off for now.</b> They start automatically once email is set up with your own domain (RESEND_API_KEY and MAIL_FROM in Netlify; see docs/SETUP.md). People can still join the list.</div><br>`}
+    <div class="box">${waitlist.length ? `<ul class="list">${waitlist.map(w => `<li class="text"><div><b class="t">${esc(w.name)}</b> <span class="pill plain">Wants: ${esc(want(w))}</span>
+      <div class="s">${esc(w.email)} · joined ${esc(fmtDate(w.createdAt))} · ${(w.notified || []).length} alert${(w.notified || []).length === 1 ? "" : "s"} sent</div></div>
+      <div class="ctrl"><button class="btn danger sm" type="button" data-delete-wait="${esc(w.id)}">Remove</button></div></li>`).join("")}</ul>`
+      : `<div class="pad muted">Nobody on the waiting list yet. Visitors can join at the bottom of the "Meet our pets" page.</div>`}</div>`);
+}
+
+/* ---------------- visitors ---------------- */
+async function vVisitors() {
+  await refreshCounts();
+  const st = await A("/api/admin/stats?days=30");
+  const last7 = st.days.slice(-7).reduce((t, d) => t + d.views, 0);
+  const max = Math.max(1, ...st.days.map(d => d.views));
+  const W = 600, H = 140, bw = W / st.days.length;
+  const bars = st.days.map((d, i) => { const h = Math.round((d.views / max) * (H - 20)); return `<rect x="${(i * bw + 2).toFixed(1)}" y="${H - h}" width="${(bw - 4).toFixed(1)}" height="${h}" rx="3" fill="${i === st.days.length - 1 ? "#a4515a" : "#e9bcb9"}"><title>${esc(fmtDate(d.date))}: ${d.views} views</title></rect>`; }).join("");
+  const pageName = k => ({ "/": "Home", "/adopt": "Meet our pets", "/adopt/(pet)": "Pet pages", "/how-to-adopt": "How to adopt", "/happy-tails": "Happy tails", "/about": "About", "/help": "Ways to help", "/donate": "Donate", "/faq": "FAQ", "/contact": "Contact", "/privacy": "Privacy" }[k] || k);
+  const rows = (list, f = x => x) => list.length ? `<ul class="list">${list.map(r => `<li class="text"><div><b class="t">${esc(f(r.key))}</b></div><div class="ctrl"><b>${r.views}</b>&nbsp;<span class="s">views</span></div></li>`).join("")}</ul>` : `<div class="pad muted">No visits counted yet.</div>`;
+  shell("visitors", `<div class="a-head"><div><h1>Visitors</h1><p>Anonymous page views: no cookies, no personal data. Counted once per page per visit.</p></div></div>
+    <div class="stats"><div class="stat hl"><b>${last7}</b><span>Views, last 7 days</span></div><div class="stat"><b>${st.total}</b><span>Views, last 30 days</span></div>
+      <div class="stat"><b>${st.topPets[0] ? esc(st.topPets[0].views) : 0}</b><span>${st.topPets[0] ? `Top pet: ${esc(st.topPets[0].key)}` : "Top pet"}</span></div><div class="stat"><b>${st.days[st.days.length - 1].views}</b><span>Views today</span></div></div>
+    <div class="box"><h2>Last 30 days</h2><div class="pad"><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Daily page views for the last 30 days">${bars}</svg></div></div>
+    <div class="box"><h2>Most viewed pets</h2>${rows(st.topPets)}</div>
+    <div class="box"><h2>Most viewed pages</h2>${rows(st.topPages, pageName)}</div>`);
+}
+
 /* ---------------- more (phones) ---------------- */
 async function vMore() {
   await refreshCounts();
   const go = (h, l) => `<a href="#${h}">${l}<span aria-hidden="true">›</span></a>`;
   shell("more", `<div class="a-head"><div><h1>More</h1><p>Everything else for running your website.</p></div></div>
-    <div class="box more-links">${go("stories", "Happy tails")}${go("settings", "Settings &amp; security")}${go("backup", "Backup")}
+    <div class="box more-links">${go("stories", `Happy tails${counts.stories ? ` (${counts.stories} to approve)` : ""}`)}${go("waitlist", "Waiting list")}${go("visitors", "Visitors")}${go("settings", "Settings &amp; security")}${go("backup", "Backup")}
       <a href="/" target="_blank" rel="noopener">View website<span aria-hidden="true">↗</span></a>
       <button type="button" id="logoutMore">Sign out</button></div>`);
 }
@@ -346,18 +383,22 @@ async function vMore() {
 /* ---------------- backup ---------------- */
 async function vBackup() {
   await refreshCounts();
-  shell("backup", `<div class="a-head"><div><h1>Backup</h1><p>Download everything (pets, applications, messages, stories and settings) as one file.</p></div></div>
-    <div class="box"><div class="pad"><p>We recommend downloading a backup once a month and keeping it somewhere safe, like Google Drive. Photos stay on the website and aren't included in the file.</p>
+  const { backups } = await A("/api/admin/backups");
+  shell("backup", `<div class="a-head"><div><h1>Backup</h1><p>A full copy of pets, applications, messages, stories, waiting list and settings.</p></div></div>
+    <div class="box"><h2>Automatic monthly backups</h2><div class="pad"><p>A backup is saved automatically on the 1st of every month, and the last 12 are kept here.${summary?.email?.owner ? " You'll get an email each time." : ""} Photos stay on the website and aren't included.</p>
+      <div class="btn-row mt-m"><button class="btn light" type="button" id="backupNow">Save a backup now</button></div></div>
+      ${backups.length ? `<ul class="list">${backups.map(d => `<li class="text"><div><b class="t">${esc(fmtDate(d, true))}</b></div><div class="ctrl"><button class="btn light sm" type="button" data-backup-dl="${esc(d)}">Download</button></div></li>`).join("")}</ul>` : `<div class="pad muted">No automatic backups yet. The first one is saved on the 1st of next month, or press "Save a backup now".</div>`}</div>
+    <div class="box"><h2>Download right now</h2><div class="pad"><p>Get a copy of everything as it is this minute.</p>
       <div class="btn-row mt-m"><button class="btn" type="button" id="downloadBackup">Download backup</button></div>
-      <p class="hint mt-m">The file contains adopters' personal details. Store it privately and delete old copies you no longer need.</p></div></div>`);
+      <p class="hint mt-m">Backups contain adopters' personal details. Store them privately and delete old copies you no longer need.</p></div></div>`);
 }
-async function downloadBackup(btn) {
+async function downloadBackup(btn, date) {
   busy(btn, true, "Preparing…");
   try {
-    const data = await guarded(() => A("/api/admin/export"));
+    const data = await guarded(() => A(date ? `/api/admin/backups/${date}` : "/api/admin/export"));
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob), a = document.createElement("a");
-    a.href = url; a.download = `pawfamily-backup-${new Date().toISOString().slice(0, 10)}.json`; document.body.append(a); a.click(); a.remove();
+    a.href = url; a.download = `pawfamily-backup-${date || new Date().toISOString().slice(0, 10)}.json`; document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000); toast("Backup downloaded");
   } catch (err) { toast(err.message, { error: true }); }
   busy(btn, false);
@@ -388,6 +429,13 @@ document.addEventListener("click", e => {
   if (b.dataset.editStory) return storyEditor(b.dataset.editStory === "new" ? null : b.dataset.editStory);
   if (b.dataset.deleteStory) return confirmStep(b, () => act(async () => { await A(`/api/admin/stories/${b.dataset.deleteStory}`, { method: "DELETE" }); toast("Story deleted"); vStories(); }));
   if (b.id === "downloadBackup") return downloadBackup(b);
+  if (b.dataset.backupDl) return downloadBackup(b, b.dataset.backupDl);
+  if (b.id === "backupNow") return act(async () => { busy(b, true, "Saving…"); await A("/api/admin/backups", { method: "POST" }); toast("Backup saved"); vBackup(); });
+  if (b.dataset.approveStory) {
+    const st = stories.find(x => x.id === b.dataset.approveStory);
+    return act(async () => { await A(`/api/admin/stories/${st.id}`, { method: "PUT", body: { title: st.title, animalName: st.animalName || "", body: st.body, photo: st.photo || "", published: true } }); toast("Story published"); vStories(); });
+  }
+  if (b.dataset.deleteWait) return confirmStep(b, () => act(async () => { await A(`/api/admin/waitlist/${b.dataset.deleteWait}`, { method: "DELETE" }); toast("Removed from the waiting list"); vWaitlist(); }));
 });
 document.addEventListener("change", e => {
   const t = e.target;
@@ -400,7 +448,7 @@ dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
 window.addEventListener("hashchange", route);
 
 /* ---------------- router & boot ---------------- */
-const VIEWS = { overview: vOverview, pets: vPets, applications: vApplications, messages: vMessages, stories: vStories, settings: vSettings, backup: vBackup, more: vMore };
+const VIEWS = { overview: vOverview, pets: vPets, applications: vApplications, messages: vMessages, stories: vStories, waitlist: vWaitlist, visitors: vVisitors, settings: vSettings, backup: vBackup, more: vMore };
 function renderBrand() { $("#adminBrand").innerHTML = `${LOGO}<span><b>${esc(settings?.rescueName || "Pawfamily")}</b><small>Owner dashboard</small></span>`; }
 async function route() {
   if (!me.signedIn) return renderLogin();

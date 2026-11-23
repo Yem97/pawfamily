@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 process.env.PAWFAMILY_DATA_DIR ||= path.join(root, ".data");
 const { default: api } = await import("../netlify/functions/api.mjs");
+const { default: share } = await import("../netlify/functions/share.mjs");
+const { default: seo } = await import("../netlify/functions/seo.mjs");
 
 const SITE = path.join(root, "site");
 const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -21,10 +23,13 @@ for (const m of toml.matchAll(/^\s*([A-Za-z-]+)\s*=\s*"((?:[^"\\]|\\.)*)"\s*$/gm
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   try {
-    if (url.pathname.startsWith("/api/")) {
+    const fn = url.pathname.startsWith("/api/") ? api
+      : /^\/adopt\/[a-z0-9-]+\/?$/.test(url.pathname) ? share
+      : ["/sitemap.xml", "/robots.txt"].includes(url.pathname) ? seo : null;
+    if (fn) {
       const chunks = []; for await (const c of req) chunks.push(c);
       const request = new Request(url, { method: req.method, headers: req.headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks) });
-      const response = await api(request, { ip: req.socket.remoteAddress });
+      const response = await fn(request, { ip: req.socket.remoteAddress, params: { slug: url.pathname.split("/")[2] } });
       const out = {}; response.headers.forEach((v, k) => { out[k] = v; });
       res.writeHead(response.status, out);
       res.end(Buffer.from(await response.arrayBuffer()));

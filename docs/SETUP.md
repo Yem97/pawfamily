@@ -46,6 +46,22 @@ Then go to **Deploys → Trigger deploy → Deploy site**, because new variables
 
 Even without email, every application and message is saved in the dashboard.
 
+## 4b. Waiting-list alerts to the public
+
+Alerts to people on the waiting list need emails **from your own domain** (Resend's test sender can only email the account owner):
+
+1. In Resend → **Domains → Add domain** → `pawfamilyfreehome.com`, and add the DNS records it shows (in Netlify DNS if you use it).
+2. Once it shows **Verified**, set `MAIL_FROM` in Netlify, e.g. `Pawfamily <hello@pawfamilyfreehome.com>`, and redeploy.
+3. From then on, listing a pet as **Available** emails everyone whose wishes match, once per pet. Each email has a one-click unsubscribe.
+
+## 4c. Donations
+
+Create a donation link with your provider (PayPal "Donate" button link, a Stripe Payment Link, Ko-fi or JustGiving), then paste it in Dashboard → **Settings → Donation link**. The Donate page, footer link and buttons switch on automatically. Card details never touch this website.
+
+## 4d. Automatic backups
+
+Nothing to set up: Netlify runs `netlify/functions/backup.mjs` on the 1st of every month and keeps the last 12 backups (Dashboard → **Backup**). If email alerts are set up, the owner gets an email each time.
+
 ## 5. Custom domain
 
 Once `pawfamilyfreehome.com` is bought: Netlify → **Domain management → Add a domain**, and follow the DNS instructions. HTTPS is issued automatically and free.

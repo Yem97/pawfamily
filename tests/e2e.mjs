@@ -26,7 +26,9 @@ await new Promise((res, rej) => { server.stdout.on("data", d => String(d).includ
 // A real JPEG made by the browser itself, to upload as a pet photo.
 const problems = [];
 const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+// A normal desktop browser identity: the site (correctly) doesn't count "HeadlessChrome" visits.
+const REAL_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 }, userAgent: REAL_UA });
 await ctx.addInitScript(() => document.addEventListener("securitypolicyviolation", e => console.error(`CSP violation: ${e.violatedDirective} ${e.blockedURI}`)));
 const watch = page => {
   page.on("pageerror", e => problems.push(`JS error: ${e.message}`));
@@ -166,6 +168,71 @@ await admin.waitForSelector(".form-error"); // temporary details no longer work
 await admin.fill("#login-email", "her.own@pawfamily.test"); await admin.fill("#login-password", "my own lovely password"); await admin.click("#login button");
 await admin.waitForSelector(".stats"); assert.ok(!(await admin.isVisible("text=signed in with the temporary password")));
 step("owner sets own email + password; temporary details stop working; reminder disappears");
+
+// 10c. New features as a visitor and as the owner
+// Donation link + Donate page
+await admin.goto(BASE + "/admin/#settings"); await admin.waitForSelector("#settings");
+await admin.fill("#settings-donateUrl", "https://www.paypal.com/donate/?hosted_button_id=EXAMPLE"); await admin.click("#settings button[type=submit]"); await admin.waitForSelector("#toast.show");
+await page.goto(BASE + "/donate"); await page.waitForSelector("main h1");
+assert.equal(await page.getAttribute(".panel-card a.btn", "href"), "https://www.paypal.com/donate/?hosted_button_id=EXAMPLE");
+assert.equal(await page.getAttribute(".panel-card a.btn", "rel"), "noopener noreferrer");
+assert.ok(await page.isVisible('footer a[href="/donate"]'));
+await page.screenshot({ path: path.join(SHOTS, "14-donate.png") });
+step("donate page links to the owner's donation page (opens safely in a new tab)");
+
+// Waiting list
+await page.goto(BASE + "/adopt#alerts"); await page.waitForSelector("#alertsForm");
+await page.click("#alertsForm button[type=submit]"); await page.waitForSelector("#err-alertsForm-name:not(:empty)");
+await page.fill("#alertsForm-name", "Leo"); await page.fill("#alertsForm-email", "leo@example.com"); await page.selectOption("#alertsForm-species", "cat");
+await page.check("#alertsForm-consent"); await page.click("#alertsForm button[type=submit]"); await page.waitForSelector("#alertsDone");
+await admin.goto(BASE + "/admin/#waitlist"); await admin.waitForSelector("text=Leo");
+assert.ok(await admin.isVisible("text=Alerts are switched off"), "owner told alerts need email set up");
+await admin.screenshot({ path: path.join(SHOTS, "15-admin-waitlist.png") });
+step("waiting list: visitor joins with validation; owner sees them; email-off notice shown");
+
+// Happy tail submission with photo, then approval
+await page.goto(BASE + "/happy-tails#share-story"); await page.waitForSelector("#storyForm");
+await page.fill("#storyForm-name", "Grace"); await page.fill("#storyForm-email", "grace@example.com"); await page.fill("#storyForm-animalName", "Nutmeg");
+await page.fill("#storyForm-title", "Nutmeg's first month"); await page.fill("#storyForm-body", "Nutmeg loves the garden and sleeps on our bed every night.");
+await page.setInputFiles("#storyForm-photo", photoPath); await page.waitForSelector("text=Photo ready");
+await page.check("#storyForm-consent"); await page.click("#storyForm button[type=submit]"); await page.waitForSelector("#storyDone");
+await page.goto(BASE + "/happy-tails"); await page.waitForSelector(".stories");
+assert.equal(await page.locator(".story h3", { hasText: "Nutmeg's first month" }).count(), 0, "not public before approval");
+await admin.goto(BASE + "/admin/#overview"); await admin.waitForSelector(".stats");
+assert.ok(await admin.isVisible("text=waiting for your approval"));
+await admin.goto(BASE + "/admin/#stories"); await admin.waitForSelector("[data-approve-story]");
+await admin.click("[data-approve-story]"); await admin.waitForSelector("#toast.show");
+await page.goto(BASE + "/happy-tails"); await page.waitForSelector(".story h3");
+assert.equal(await page.locator(".story h3", { hasText: "Nutmeg's first month" }).count(), 1, "public after approval");
+assert.equal(await page.locator(".story img").count() >= 1, true, "photo shown");
+step("happy tails: visitor sends story + photo; hidden until owner approves; then published");
+
+// Share preview + sitemap + robots
+const petSlug = await page.evaluate(async () => (await (await fetch("/api/public/site")).json()).animals[0].slug);
+const petHtml = await page.evaluate(async s => (await fetch(`/adopt/${s}`)).text(), petSlug);
+assert.match(petHtml, /<meta property="og:title" content="Meet Bluebell/);
+assert.match(petHtml, /<meta property="og:image" content="http:\/\/localhost:\d+\/api\/images\/[a-f0-9]{24}">/);
+await page.goto(BASE + `/adopt/${petSlug}`); await page.waitForSelector(".profile h1"); // the page still works as normal
+const sitemap = await page.evaluate(async () => (await fetch("/sitemap.xml")).text());
+assert.ok(sitemap.includes(`/adopt/${petSlug}</loc>`));
+assert.match(await page.evaluate(async () => (await fetch("/robots.txt")).text()), /Sitemap: http:\/\/localhost:\d+\/sitemap\.xml/);
+step("pet pages carry Facebook/Google previews; sitemap lists pets; robots points to it");
+
+// Visitors
+await admin.goto(BASE + "/admin/#visitors"); await admin.waitForSelector(".stats");
+const views30 = Number(await admin.textContent(".stats .stat:nth-child(2) b"));
+assert.ok(views30 > 0, "page views were counted");
+assert.ok(await admin.isVisible("svg[aria-label^='Daily page views']"));
+await admin.screenshot({ path: path.join(SHOTS, "16-admin-visitors.png"), fullPage: true });
+assert.ok(!(await admin.isVisible('.a-nav a[href="#more"]')), "phone-only More item hidden on desktop");
+step(`visitors: anonymous views counted (${views30} in this test) with chart and top pets`);
+
+// Backups
+await admin.goto(BASE + "/admin/#backup"); await admin.waitForSelector("#backupNow");
+await admin.click("#backupNow"); await admin.waitForSelector("[data-backup-dl]");
+const [bdl] = await Promise.all([admin.waitForEvent("download"), admin.click("[data-backup-dl]")]);
+assert.match(bdl.suggestedFilename(), /^pawfamily-backup-\d{4}-\d{2}-\d{2}\.json$/);
+step("backups: save now, listed, downloadable");
 
 // 11. Backup, logout, session gone
 const [dl] = await Promise.all([admin.waitForEvent("download"), (async () => { await admin.goto(BASE + "/admin/#backup"); await admin.click("#downloadBackup"); })()]);

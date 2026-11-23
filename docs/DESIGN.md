@@ -37,6 +37,17 @@ Domain (planned): `pawfamilyfreehome.com`. Hosting: Netlify.
 | A9 | The owner shall download a full backup (JSON) of all data. |
 | A10 | Sessions shall expire after 8 hours, and the owner can sign out at any time. |
 
+### Added features
+| ID | Requirement |
+|---|---|
+| F1 | Pet pages (`/adopt/<slug>`) shall be served with that pet's title, description, photo and canonical URL in the HTML head, so Facebook, WhatsApp and Google show a proper preview. |
+| F2 | Visitors shall be able to send a happy tail (story, pet's name, optional photo). It shall not appear publicly until the owner approves it. |
+| F3 | Visitors shall be able to join a waiting list with their wishes (type, sex, age). When a matching pet becomes Available, each matching person shall be emailed once, with a one-click unsubscribe that deletes their details. |
+| F4 | The system shall count page and pet views anonymously (no cookies, no IP addresses, no identifiers), skip bots and visitors sending Do Not Track or Global Privacy Control, and show 30-day totals to the owner. |
+| F5 | `/sitemap.xml` shall list all public pages and listed pets, and `/robots.txt` shall point to it and exclude `/admin/` and `/api/`. |
+| F6 | A full backup shall be saved automatically every month, with the last 12 kept and downloadable from the dashboard. |
+| F7 | A Donate page shall link to the owner's external donation provider. No payment data is handled by this site. |
+
 ---
 
 ## 2. Architecture
@@ -67,6 +78,13 @@ All responses are JSON: `{ ok: true, ... }` or `{ ok: false, error: "message", f
 | POST | `/api/public/applications` | Adoption application (rate limited, honeypot) |
 | POST | `/api/public/messages` | Contact message (rate limited, honeypot) |
 | GET | `/api/images/<id>` | A photo (immutable, cached for 1 year) |
+| GET | `/api/images/<id>/thumb` | ~600 px version for cards (falls back to the full photo) |
+| POST | `/api/public/waitlist` | Join the waiting list (rate limited, honeypot, consent) |
+| GET | `/api/public/waitlist/unsubscribe?id=&t=` | One-click unsubscribe (token-checked) |
+| POST | `/api/public/stories` | Send a happy tail, held for approval (3 per hour per network) |
+| POST | `/api/public/hit` | Anonymous page-view count (bots ignored) |
+
+Other functions: `share.mjs` serves `/adopt/<slug>` with per-pet preview tags; `seo.mjs` serves `/sitemap.xml` and `/robots.txt`; `backup.mjs` is a monthly scheduled function.
 
 ### Auth
 | Method | Path | Purpose |
@@ -91,6 +109,10 @@ All responses are JSON: `{ ok: true, ... }` or `{ ok: false, error: "message", f
 | PUT, DELETE | `/api/admin/stories/<id>` | Update / delete |
 | GET, PUT | `/api/admin/settings` | Read / save settings |
 | GET | `/api/admin/export` | Full JSON backup |
+| GET, DELETE | `/api/admin/waitlist[/<id>]` | Waiting list (tokens never returned) / remove |
+| GET | `/api/admin/stats?days=30` | Visit counts, top pages and pets |
+| GET, POST | `/api/admin/backups[/<date>]` | List, save now, download a monthly backup |
+| GET, PUT | `/api/admin/security` | Change sign-in email and password |
 
 ---
 
@@ -106,6 +128,9 @@ All responses are JSON: `{ ok: true, ... }` or `{ ok: false, error: "message", f
 | Spam on public forms | Hidden honeypot field, 5 submissions per hour per network, server-side validation with length limits |
 | Data exposure | The public endpoint returns only listed animals and public settings. Applications and messages are admin-only. IPs are stored only as salted hashes for rate limiting |
 | Secrets | Read from Netlify environment variables only. `.env` is git-ignored |
+| Public photo uploads (happy tails) | Rate limited, size cap, file-signature check, never public until the owner approves |
+| Email abuse via the waiting list | Rate limited, consent required, one email per pet per person, unsubscribe token checked; alerts only go out when the owner lists a pet |
+| Tracking | Visit counts store only page path and date totals: no cookies, IPs or identifiers. DNT/GPC respected |
 | Misconfiguration | If admin env vars are missing, sign-in is refused with a clear "not configured" error (fails closed) |
 
 ---

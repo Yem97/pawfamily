@@ -14,6 +14,8 @@ Website and owner dashboard for **Pawfamily**, a pet rescue and rehoming service
 
 **Owner dashboard**: Secure sign-in · overview · add and edit pets with up to 8 photos (resized automatically) · one-click status (available, reserved, adopted, hidden) · adoption applications with stages and private notes · contact messages · adoption stories · site settings (name, contact, fees, announcement bar) · full JSON backup.
 
+**Also**: Facebook/WhatsApp previews with each pet's photo · "Share your happy tail" (moderated) · waiting list with automatic new-pet emails · anonymous visitor stats (no cookies) · sitemap and robots for Google · automatic monthly backups · Donate page linked to the owner's provider.
+
 Optional email alerts for every application and message (via Resend).
 
 ## Project layout
@@ -25,6 +27,9 @@ site/                  Static website (no build step)
   assets/              styles.css, ui.js (shared), app.js (public), admin.js (dashboard)
 netlify/functions/
   api.mjs              The whole API, one function at /api/*
+  share.mjs            Pet pages with Facebook/Google preview tags (/adopt/<pet>)
+  seo.mjs              /sitemap.xml and /robots.txt
+  backup.mjs           Monthly scheduled backup
   lib/                 store (Netlify Blobs), auth, validation, email, http helpers
 scripts/
   dev-server.mjs       Local server running the same API on a file store
@@ -48,8 +53,8 @@ See **[docs/SETUP.md](docs/SETUP.md)**. In short: run `npm run hash-password -- 
 ```bash
 npm install
 npm run dev          # http://localhost:8888
-npm test             # 13 API and security tests
-npm run test:e2e     # 21 browser checks incl. 4 phone sizes (requires Playwright)
+npm test             # 20 API, security and feature tests
+npm run test:e2e     # 27 browser checks incl. 4 phone sizes (requires Playwright)
 ```
 
 ## Security summary

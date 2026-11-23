@@ -6,15 +6,12 @@
   node_bundler = "esbuild"
 
 # Website pages are handled by the single-page app (site/index.html).
-# Routes are listed explicitly (no catch-all) so /api/* always reaches the function.
+# Routes are listed explicitly (no catch-all) so /api/*, /adopt/<pet>, /sitemap.xml and /robots.txt reach their functions.
 [[redirects]]
   from = "/adopt"
   to = "/index.html"
   status = 200
-[[redirects]]
-  from = "/adopt/*"
-  to = "/index.html"
-  status = 200
+# /adopt/<pet> is served by netlify/functions/share.mjs (adds that pet's preview for Facebook/Google).
 [[redirects]]
   from = "/how-to-adopt"
   to = "/index.html"
@@ -37,6 +34,10 @@
   status = 200
 [[redirects]]
   from = "/contact"
+  to = "/index.html"
+  status = 200
+[[redirects]]
+  from = "/donate"
   to = "/index.html"
   status = 200
 [[redirects]]

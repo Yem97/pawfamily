@@ -4,7 +4,9 @@ import { getStores, listRecords } from "./lib/store.mjs";
 import { HttpError, ok, fail, readJson, clientKey, nowIso } from "./lib/http.mjs";
 import { getCredentials, hashPassword, verifyPassword, createSessionCookie, clearSessionCookie, readSession, requireAdmin, assertSameOrigin, CREDENTIALS_KEY } from "./lib/auth.mjs";
 import { rules as r, validate } from "./lib/validate.mjs";
-import { notifyOwner } from "./lib/email.mjs";
+import { notifyOwner, sendPetAlert, emailConfigured, ownerEmailConfigured } from "./lib/email.mjs";
+import { DEFAULT_SETTINGS, getSettings, buildExport, feeOf, speciesWords } from "./lib/site.mjs";
+import { createBackup } from "./lib/backup.mjs";
 
 export const config = { path: "/api/*" };
 
@@ -18,17 +20,6 @@ const APP_STATUS = ["new", "reviewing", "home-check", "approved", "adopted", "de
 const MSG_STATUS = ["new", "replied"];
 const MAX_IMAGE = 3 * 1024 * 1024;
 
-const DEFAULT_SETTINGS = {
-  rescueName: "Pawfamily",
-  tagline: "Rescued pets, loving homes",
-  town: "", region: "", email: "", phone: "",
-  facebookUrl: "https://www.facebook.com/share/1CLxMBvaTP/",
-  instagramUrl: "", donateUrl: "", charityNumber: "",
-  currency: "£", defaultFee: null,
-  feeIncludes: "Vet health check, first vaccinations, microchip, flea and worm treatment, and neutering when old enough.",
-  announcement: "",
-  aboutText: "",
-};
 
 const newId = () => randomBytes(12).toString("hex");
 const sortKey = () => String(Date.now()).padStart(15, "0"); // time-ordered, storage-safe key prefix
@@ -48,7 +39,6 @@ async function rateLimit(store, scope, key, limit, windowMs) {
 }
 
 /* ---------------- shared loaders ---------------- */
-async function getSettings(data) { return { ...DEFAULT_SETTINGS, ...(await data.getJSON("settings") || {}) }; }
 const publicAnimal = a => ({
   id: a.id, slug: a.slug, name: a.name, species: a.species, breed: a.breed, sex: a.sex, ageGroup: a.ageGroup, birthDate: a.birthDate,
   status: a.status, fee: a.fee, summary: a.summary, story: a.story, photos: a.photos, traits: a.traits, health: a.health,
@@ -220,7 +210,8 @@ async function adminAnimals(req, ctx, id) {
     const rid = newId();
     const rec = { id: rid, slug: slugify(v.name, rid), ...v, createdAt: nowIso(), updatedAt: nowIso() };
     await data.setJSON(`animals/${rid}`, rec);
-    return ok({ animal: rec });
+    const alerted = rec.status === "available" ? await alertWaitlist(ctx, rec, new URL(req.url).origin) : 0;
+    return ok({ animal: rec, alerted });
   }
   const existing = id && await data.getJSON(`animals/${id}`);
   if (!existing) return fail(404, "That pet wasn't found.");
@@ -231,7 +222,8 @@ async function adminAnimals(req, ctx, id) {
     const rec = { ...existing, ...v, slug, updatedAt: nowIso() };
     await data.setJSON(`animals/${id}`, rec);
     await Promise.all(removed.map(p => deleteImage(images, p)));
-    return ok({ animal: rec });
+    const alerted = rec.status === "available" && existing.status !== "available" ? await alertWaitlist(ctx, rec, new URL(req.url).origin) : 0;
+    return ok({ animal: rec, alerted });
   }
   if (req.method === "DELETE") {
     await data.delete(`animals/${id}`);
@@ -309,23 +301,23 @@ async function adminSettings(req, { data }) {
 
 async function adminSummary({ data }) {
   const [animals, applications, messages, stories] = await Promise.all(["animals/", "applications/", "messages/", "stories/"].map(p => listRecords(data, p)));
+  const waitlistCount = (await data.listKeys("waitlist/")).length;
   const count = (list, s) => list.filter(x => x.status === s).length;
   return ok({
     animals: { total: animals.length, available: count(animals, "available"), reserved: count(animals, "reserved"), adopted: count(animals, "adopted"), hidden: count(animals, "hidden") },
     applications: { total: applications.length, new: count(applications, "new"), open: applications.filter(a => !["adopted", "declined"].includes(a.status)).length },
     messages: { total: messages.length, new: count(messages, "new") },
-    stories: { total: stories.length, published: stories.filter(s => s.published).length },
+    stories: { total: stories.length, published: stories.filter(s => s.published).length, pending: stories.filter(s => s.submitted && !s.published).length },
+    waitlist: { total: waitlistCount },
+    email: { owner: ownerEmailConfigured(), public: emailConfigured() && Boolean(process.env.MAIL_FROM) },
     recentApplications: applications.slice(0, 5),
     recentMessages: messages.slice(0, 5),
   });
 }
 
 async function adminExport({ data }) {
-  const [settings, animals, applications, messages, stories] = await Promise.all([
-    getSettings(data), listRecords(data, "animals/"), listRecords(data, "applications/"), listRecords(data, "messages/"), listRecords(data, "stories/")]);
-  const date = nowIso().slice(0, 10);
-  return ok({ exportedAt: nowIso(), version: 1, settings, animals, applications, messages, stories },
-    { "content-disposition": `attachment; filename="pawfamily-backup-${date}.json"` });
+  const snapshot = await buildExport(data);
+  return ok(snapshot, { "content-disposition": `attachment; filename="pawfamily-backup-${snapshot.exportedAt.slice(0, 10)}.json"` });
 }
 
 /* Owner changes their sign-in email and/or password (Settings > Security). */
@@ -358,6 +350,156 @@ async function adminSecurity(req, ctx, creds) {
   return ok({ email: rec.email, passwordChanged: Boolean(newPassword) }, { "set-cookie": createSessionCookie(req, `d${version}`) });
 }
 
+/* ---------------- waiting list ---------------- */
+const waitlistSchema = {
+  name: r.text(100, { required: true, min: 2, label: "Your name" }),
+  email: r.email(),
+  species: r.oneOf(["any", ...SPECIES], { label: "Type of pet", fallback: "any" }),
+  sex: r.oneOf(["any", "female", "male"], { label: "Sex", fallback: "any" }),
+  ageGroup: r.oneOf(["any", ...AGE], { label: "Age", fallback: "any" }),
+  consent: r.bool(),
+};
+const wantsPet = (w, a) => (w.species === "any" || w.species === a.species) && (w.sex === "any" || w.sex === a.sex) && (w.ageGroup === "any" || w.ageGroup === a.ageGroup);
+
+async function joinWaitlist(req, ctx) {
+  assertSameOrigin(req);
+  const body = await readJson(req);
+  honeypot(body);
+  const limiter = await rateLimit(ctx.data, "forms", clientKey(req, ctx.context), 5, 3600e3);
+  const v = validate(body, waitlistSchema);
+  if (!v.consent) throw new HttpError(422, "Please check the highlighted fields.", { consent: "Please confirm we may email you about matching pets." });
+  const all = await listRecords(ctx.data, "waitlist/");
+  if (all.some(w => w.email === v.email && w.species === v.species && w.sex === v.sex && w.ageGroup === v.ageGroup)) return ok({ already: true });
+  const { consent, ...prefs } = v;
+  const rec = { id: newId(), token: randomBytes(16).toString("hex"), createdAt: nowIso(), consentAt: nowIso(), notified: [], ...prefs };
+  await ctx.data.setJSON(`waitlist/${sortKey()}_${rec.id}`, rec);
+  await limiter.hit();
+  return ok({});
+}
+
+/** Email everyone on the waiting list whose wishes match a newly available pet (once per pet). */
+async function alertWaitlist(ctx, animal, origin) {
+  if (!emailConfigured()) return 0;
+  const { data } = ctx;
+  const [settings, keys] = await Promise.all([getSettings(data), data.listKeys("waitlist/")]);
+  let sent = 0;
+  for (const key of keys.slice(0, 500)) {
+    const w = await data.getJSON(key);
+    if (!w || !wantsPet(w, animal) || (w.notified || []).includes(animal.id)) continue;
+    const res = await sendPetAlert({
+      to: w.email, name: w.name, rescueName: settings.rescueName, pet: animal.name,
+      petLine: [animal.sex !== "unknown" ? animal.sex : "", animal.ageGroup, animal.breed || speciesWords[animal.species]].filter(Boolean).join(" "),
+      fee: feeOf(animal, settings), petUrl: `${origin}/adopt/${animal.slug}`,
+      unsubscribeUrl: `${origin}/api/public/waitlist/unsubscribe?id=${w.id}&t=${w.token}`, replyTo: settings.email || undefined,
+    });
+    if (res.sent) { w.notified = [...(w.notified || []), animal.id].slice(-200); await data.setJSON(key, w); sent++; }
+  }
+  return sent;
+}
+
+async function unsubscribeWaitlist(url, { data }) {
+  const id = url.searchParams.get("id") || "", token = url.searchParams.get("t") || "";
+  let done = false;
+  if (/^[a-f0-9]{24}$/.test(id) && /^[a-f0-9]{32}$/.test(token)) {
+    const key = (await data.listKeys("waitlist/")).find(k => k.endsWith(`_${id}`));
+    const rec = key && await data.getJSON(key);
+    if (rec && rec.token === token) { await data.delete(key); done = true; }
+  }
+  const msg = done ? "You've been removed from the waiting list. You won't receive any more pet alerts." : "This link has already been used or isn't valid. You're not on the waiting list.";
+  return new Response(`<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Waiting list</title><link rel="stylesheet" href="/assets/styles.css"></head>
+<body><main class="page-head"><div class="wrap"><div class="eyebrow">Waiting list</div><h1>${done ? "You're unsubscribed" : "Nothing to do"}</h1><p class="lead">${msg}</p><div class="btn-row mt-m"><a class="btn" href="/adopt">See our pets</a></div></div></main></body></html>`,
+    { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" } });
+}
+
+async function adminWaitlist(req, { data }, id) {
+  if (req.method === "GET" && !id) return ok({ waitlist: (await listRecords(data, "waitlist/")).map(({ token, ...w }) => w), emailReady: emailConfigured() && Boolean(process.env.MAIL_FROM) });
+  if (req.method === "DELETE" && /^[a-f0-9]{24}$/.test(id || "")) {
+    const key = (await data.listKeys("waitlist/")).find(k => k.endsWith(`_${id}`));
+    if (!key) return fail(404, "Not found.");
+    await data.delete(key); return ok();
+  }
+  return fail(405, "Method not allowed.");
+}
+
+/* ---------------- happy tail submissions (public, moderated) ---------------- */
+const submittedStorySchema = {
+  name: r.text(100, { required: true, min: 2, label: "Your name" }),
+  email: r.email(),
+  animalName: r.text(60, { required: true, label: "Your pet's name" }),
+  title: r.text(120, { required: true, label: "Title" }),
+  body: r.text(3000, { required: true, min: 20, label: "Your story" }),
+  consent: r.bool(),
+};
+async function submitStory(req, ctx) {
+  assertSameOrigin(req);
+  const body = await readJson(req, 5 * 1024 * 1024);
+  honeypot(body);
+  const limiter = await rateLimit(ctx.data, "stories", clientKey(req, ctx.context), 3, 3600e3);
+  const v = validate(body, submittedStorySchema);
+  if (!v.consent) throw new HttpError(422, "Please check the highlighted fields.", { consent: "Please confirm we may publish your story and photo." });
+  let photo = "";
+  if (body.dataUrl) {
+    const full = decodeImage(body.dataUrl), thumb = body.thumbDataUrl ? decodeImage(body.thumbDataUrl) : null;
+    photo = newId();
+    await ctx.images.setBinary(`img/${photo}`, full.bytes, full.type);
+    if (thumb) await ctx.images.setBinary(`img/${photo}-t`, thumb.bytes, thumb.type);
+  }
+  const rec = { id: newId(), title: v.title, animalName: v.animalName, body: v.body, photo, published: false, submitted: true,
+    submittedBy: { name: v.name, email: v.email }, createdAt: nowIso(), updatedAt: nowIso() };
+  await ctx.data.setJSON(`stories/${rec.id}`, rec);
+  await limiter.hit();
+  await notifyOwner(`New happy tail to approve: ${v.animalName}`, [["From", v.name], ["Email", v.email], ["Pet", v.animalName], ["Title", v.title], ["Story", v.body], ["Photo", photo ? "Yes" : "No"]], v.email);
+  return ok({});
+}
+
+/* ---------------- anonymous visit counts ---------------- */
+const BOT_UA = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|headless|lighthouse|monitor/i;
+async function recordHit(req, { data }) {
+  assertSameOrigin(req);
+  if (BOT_UA.test(req.headers.get("user-agent") || "")) return new Response(null, { status: 204 });
+  const text = (await req.text()).slice(0, 512);
+  let path = "";
+  try { path = String(JSON.parse(text).path || ""); } catch { /* ignore */ }
+  if (!/^\/[a-z0-9\-/]{0,100}$/.test(path)) return new Response(null, { status: 204 });
+  const day = nowIso().slice(0, 10), key = `stats/${day}`;
+  const rec = (await data.getJSON(key)) || { date: day, total: 0, pages: {}, pets: {} };
+  rec.total += 1;
+  const pet = path.match(/^\/adopt\/([a-z0-9-]+)\/?$/);
+  if (pet) rec.pets[pet[1]] = (rec.pets[pet[1]] || 0) + 1;
+  const page = pet ? "/adopt/(pet)" : path.replace(/\/$/, "") || "/";
+  if (rec.pages[page] || Object.keys(rec.pages).length < 100) rec.pages[page] = (rec.pages[page] || 0) + 1;
+  await data.setJSON(key, rec);
+  return new Response(null, { status: 204 });
+}
+async function adminStats(url, { data }) {
+  const days = Math.min(90, Math.max(7, Number(url.searchParams.get("days")) || 30));
+  const today = new Date(nowIso().slice(0, 10) + "T00:00:00Z");
+  const dates = Array.from({ length: days }, (_, i) => new Date(today.getTime() - (days - 1 - i) * 864e5).toISOString().slice(0, 10));
+  const recs = await Promise.all(dates.map(d => data.getJSON(`stats/${d}`)));
+  const pages = {}, pets = {};
+  recs.forEach(rc => { if (!rc) return; for (const [k, n] of Object.entries(rc.pages || {})) pages[k] = (pages[k] || 0) + n; for (const [k, n] of Object.entries(rc.pets || {})) pets[k] = (pets[k] || 0) + n; });
+  const animals = await listRecords(data, "animals/");
+  const nameOf = slug => animals.find(a => a.slug === slug)?.name || slug;
+  const top = (o, n, f = k => k) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ key: f(k), views: v }));
+  return ok({
+    days: dates.map((d, i) => ({ date: d, views: recs[i]?.total || 0 })),
+    total: recs.reduce((t, rc) => t + (rc?.total || 0), 0),
+    topPages: top(pages, 8), topPets: top(pets, 8, nameOf),
+  });
+}
+
+/* ---------------- backups ---------------- */
+async function adminBackups(req, { data }, id) {
+  if (req.method === "GET" && !id) return ok({ backups: (await data.listKeys("backups/")).map(k => k.slice(8)).sort().reverse() });
+  if (req.method === "POST" && !id) return ok(await createBackup(data));
+  if (req.method === "GET" && /^\d{4}-\d{2}-\d{2}$/.test(id || "")) {
+    const snap = await data.getJSON(`backups/${id}`);
+    if (!snap) return fail(404, "That backup wasn't found.");
+    return ok(snap, { "content-disposition": `attachment; filename="pawfamily-backup-${id}.json"` });
+  }
+  return fail(405, "Method not allowed.");
+}
+
 /* ---------------- router ---------------- */
 export default async function handler(req, context) {
   try {
@@ -385,6 +527,10 @@ async function route(req, context) {
       if (resource === "site" && m === "GET") return publicSite(stores);
       if (resource === "applications" && m === "POST") return submitApplication(req, ctx);
       if (resource === "messages" && m === "POST") return submitMessage(req, ctx);
+      if (resource === "waitlist" && m === "POST" && !id) return joinWaitlist(req, ctx);
+      if (resource === "waitlist" && m === "GET" && id === "unsubscribe") return unsubscribeWaitlist(url, stores);
+      if (resource === "stories" && m === "POST") return submitStory(req, ctx);
+      if (resource === "hit" && m === "POST") return recordHit(req, stores);
     }
 
     const needsAuth = area === "auth" || area === "admin";
@@ -411,6 +557,9 @@ async function route(req, context) {
         case "settings": return adminSettings(req, stores);
         case "export": if (m === "GET") return adminExport(stores); break;
         case "security": return adminSecurity(req, ctx, creds);
+        case "waitlist": return adminWaitlist(req, stores, id);
+        case "stats": if (m === "GET") return adminStats(url, stores); break;
+        case "backups": return adminBackups(req, stores, id);
       }
     }
     return fail(404, "Not found.");

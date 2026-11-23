@@ -1,5 +1,5 @@
 // Pawfamily public website (single-page app, history routing). All dynamic text is escaped with esc().
-import { esc, $, $$, LABELS, money, feeFor, ageText, fmtDate, LOGO, PAW, photo, toast, api, showFieldErrors, formError, busy, field, check, isPhone } from "./ui.js";
+import { esc, $, $$, LABELS, money, feeFor, ageText, fmtDate, LOGO, PAW, photo, toast, api, showFieldErrors, formError, busy, field, check, isPhone, resizeImage } from "./ui.js";
 
 const ICON = {
   back: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
@@ -56,7 +56,7 @@ const trustStrip = () => `<div class="trust o-trust"><div class="wrap">
 
 const helpBand = (extra = "") => `<section class="band ${extra}"><div class="wrap"><div><div class="eyebrow">Every rescue needs a team</div>
   <h2>Can't adopt right now? You can still help.</h2><p>Foster a pet while they wait for a home, volunteer with us, or donate towards vet bills.</p></div>
-  <a class="btn blush" href="/help">Ways to help</a></div></section>`;
+  <div class="btn-row"><a class="btn blush" href="/help">Ways to help</a>${S().donateUrl ? '<a class="btn light on-dark" href="/donate">Donate</a>' : ""}</div></div></section>`;
 
 /* ---------------- pages ---------------- */
 function pHome() {
@@ -93,7 +93,7 @@ function pHome() {
   </div>`;
 }
 const emptyPets = () => `<div class="empty"><h3>New friends coming soon</h3><p>All our pets have found homes for now. Follow us${S().facebookUrl ? " on Facebook" : ""} to meet new arrivals first, or register your interest.</p>
-  <div class="btn-row">${S().facebookUrl ? `<a class="btn sm" href="${esc(S().facebookUrl)}" target="_blank" rel="noopener noreferrer">Follow on Facebook</a>` : ""}<a class="btn light sm" href="/how-to-adopt#apply">Register interest</a></div></div>`;
+  <div class="btn-row">${S().facebookUrl ? `<a class="btn sm" href="${esc(S().facebookUrl)}" target="_blank" rel="noopener noreferrer">Follow on Facebook</a>` : ""}<a class="btn light sm" href="/adopt#alerts">Get new-pet alerts</a></div></div>`;
 const stepsHtml = () => `<div class="steps">
   <div class="step"><div class="n">1</div><h3>Apply</h3><p>Choose a pet (or tell us what you're looking for) and fill in a short application.</p></div>
   <div class="step"><div class="n">2</div><h3>Chat</h3><p>We'll call to talk about your home, routine and the pet that would suit you best.</p></div>
@@ -104,7 +104,39 @@ function pAdopt() {
   return `<div class="page-head"><div class="wrap"><div class="eyebrow">Adopt</div><h1>Meet our pets</h1>
     <p class="lead">Every pet has been vet checked, vaccinated and microchipped. ${feeSentence()}.</p></div></div>
     <section class="sec tight"><div class="wrap"><div class="filters" id="filters"></div><p class="count-line" id="countLine" aria-live="polite"></p><div class="grid" id="petGrid"></div></div></section>
+    <section class="sec tint" id="alerts"><div class="wrap form-layout"><div class="form-card" id="alertsCard"></div>
+      <aside class="side"><div><h3>How alerts work</h3><ul class="ticks"><li>Tell us what you're looking for</li><li>We email you the moment a matching pet is listed</li><li>One click in any email to stop alerts</li></ul></div></aside></div></section>
     ${helpBand()}`;
+}
+function renderAlertsForm() {
+  const f = "alertsForm";
+  const sel = (map, any) => `<option value="any">${any}</option>` + Object.entries(map).map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+  $("#alertsCard").innerHTML = `<div class="eyebrow">Waiting list</div><h2>Not found the one yet?</h2><p class="muted">Get an email when a pet matching your wishes arrives.</p>
+  <form class="stack mt-m" id="${f}" novalidate>
+    <div class="hp" aria-hidden="true"><label for="${f}-website">Leave this empty</label><input id="${f}-website" name="website" tabindex="-1" autocomplete="off"></div>
+    <div class="row2">${field(f, "name", "Your name", `<input <CONTROL autocomplete="name" maxlength="100">`)}${field(f, "email", "Email", `<input <CONTROL type="email" autocomplete="email" maxlength="200">`)}</div>
+    <div class="row2">${field(f, "species", "Type of pet", `<select <CONTROL>${sel(LABELS.species, "Any type")}</select>`)}${field(f, "sex", "Sex", `<select <CONTROL>${sel({ female: "Female", male: "Male" }, "Any sex")}</select>`)}</div>
+    ${field(f, "ageGroup", "Age", `<select <CONTROL>${sel(Object.fromEntries(Object.entries(LABELS.age).map(([k, l]) => [k, `${l} (${LABELS.ageHelp[k]})`])), "Any age")}</select>`)}
+    <label class="checkline"><input type="checkbox" name="consent" id="${f}-consent" aria-describedby="err-${f}-consent"><span>Email me about matching pets. I can stop at any time (<a class="link" href="/privacy">privacy</a>).</span></label>
+    <span class="err" id="err-${f}-consent"></span>
+    <div><button class="btn" type="submit">Get alerts</button></div></form>`;
+  const form = $("#" + f);
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(form)); d.consent = form.consent.checked;
+    const errs = {};
+    const n = check.required(d.name, "Your name") || check.min(d.name, 2, "Your name"); if (n) errs.name = n;
+    const em = check.email(d.email); if (em) errs.email = em;
+    if (!d.consent) errs.consent = "Please tick to confirm we may email you.";
+    formError(form, ""); if (showFieldErrors(form, errs)) return;
+    const btn = $("button[type=submit]", form); busy(btn, true, "Saving…");
+    try {
+      const res = await api("/api/public/waitlist", { method: "POST", body: d });
+      $("#alertsCard").innerHTML = `<div class="done" tabindex="-1" id="alertsDone"><div class="ok" aria-hidden="true">✓</div><h3>${res.already ? "You're already on the list" : "You're on the list"}</h3>
+        <p class="muted">We'll email <b>${esc(d.email.trim())}</b> as soon as a matching pet is listed.</p></div>`;
+      $("#alertsDone").focus();
+    } catch (err) { busy(btn, false); showFieldErrors(form, err.fields); formError(form, err.message); }
+  });
 }
 function renderAdoptGrid() {
   const all = listed();
@@ -265,7 +297,47 @@ function pStories() {
   return `<div class="page-head"><div class="wrap"><div class="eyebrow">Happy tails</div><h1>Adoption stories</h1><p class="lead">Every one of these pets was rescued and is now loved in a home of their own.</p></div></div>
     <section class="sec tight"><div class="wrap"><div class="stories">${stories.map(s => `<article class="story">${s.photo ? photo(s.photo, s.animalName || s.title) : ""}<div class="body">
       ${s.animalName ? `<span class="who">${esc(s.animalName)}</span>` : ""}<h3>${esc(s.title)}</h3><p>${esc(s.body)}</p><span class="hint">${esc(fmtDate(s.createdAt, true))}</span></div></article>`).join("")
-      || `<div class="empty"><h3>Stories coming soon</h3><p>Our first adoption stories will appear here.</p></div>`}</div></div></section>`;
+      || `<div class="empty"><h3>Stories coming soon</h3><p>Our first adoption stories will appear here.</p></div>`}</div></div></section>
+    <section class="sec tint" id="share-story"><div class="wrap form-layout"><div class="form-card" id="storyCard"></div>
+      <aside class="side"><div><h3>Adopted from us?</h3><p class="muted">We love hearing how our pets are doing. Your story is checked by us before it appears here.</p></div></aside></div></section>`;
+}
+function renderStoryForm() {
+  const f = "storyForm";
+  let pic = null; // { dataUrl, thumbDataUrl }
+  $("#storyCard").innerHTML = `<div class="eyebrow">Share your happy tail</div><h2>How is your pet doing?</h2><p class="muted">Send us a photo and a few words. We'll add it here once we've had a look.</p>
+  <form class="stack mt-m" id="${f}" novalidate>
+    <div class="hp" aria-hidden="true"><label for="${f}-website">Leave this empty</label><input id="${f}-website" name="website" tabindex="-1" autocomplete="off"></div>
+    <div class="row2">${field(f, "name", "Your name", `<input <CONTROL autocomplete="name" maxlength="100">`)}${field(f, "email", "Email", `<input <CONTROL type="email" autocomplete="email" maxlength="200">`, { hint: "Never shown on the website." })}</div>
+    <div class="row2">${field(f, "animalName", "Your pet's name", `<input <CONTROL maxlength="60">`)}${field(f, "title", "Title", `<input <CONTROL maxlength="120" placeholder="For example: Tom's first week at home">`)}</div>
+    ${field(f, "body", "Your story", `<textarea <CONTROL maxlength="3000" placeholder="How they settled in, their favourite spot, what they've brought to your home…"></textarea>`)}
+    <div class="field"><label for="${f}-photo">Photo <span class="opt">(optional)</span></label><input id="${f}-photo" type="file" accept="image/*"><span class="hint" id="${f}-photoHint">One clear photo works best.</span></div>
+    <label class="checkline"><input type="checkbox" name="consent" id="${f}-consent" aria-describedby="err-${f}-consent"><span>I'm happy for ${esc(S().rescueName)} to publish my story, photo and first name.</span></label>
+    <span class="err" id="err-${f}-consent"></span>
+    <div><button class="btn" type="submit">Send my story</button></div></form>`;
+  const form = $("#" + f);
+  $(`#${f}-photo`).addEventListener("change", async e => {
+    const file = e.target.files[0]; pic = null; if (!file) return;
+    const hint = $(`#${f}-photoHint`); hint.textContent = "Preparing photo…";
+    try { const [dataUrl, thumbDataUrl] = await Promise.all([resizeImage(file), resizeImage(file, 600, 0.78)]); pic = { dataUrl, thumbDataUrl }; hint.textContent = "Photo ready ✓"; }
+    catch (err) { e.target.value = ""; hint.textContent = err.message || "That photo couldn't be read. Try a JPG or PNG."; }
+  });
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(form)); d.consent = form.consent.checked;
+    const errs = {};
+    for (const [k, l] of [["name", "Your name"], ["animalName", "Your pet's name"], ["title", "Title"], ["body", "Your story"]]) { const m = check.required(d[k], l); if (m) errs[k] = m; }
+    if (!errs.body) { const m = check.min(d.body, 20, "Your story"); if (m) errs.body = m; }
+    const em = check.email(d.email); if (em) errs.email = em;
+    if (!d.consent) errs.consent = "Please confirm we may publish your story.";
+    formError(form, ""); if (showFieldErrors(form, errs)) return;
+    const btn = $("button[type=submit]", form); busy(btn, true, "Sending…");
+    try {
+      await api("/api/public/stories", { method: "POST", body: { ...d, ...(pic || {}) } });
+      $("#storyCard").innerHTML = `<div class="done" tabindex="-1" id="storyDone"><div class="ok" aria-hidden="true">✓</div><h3>Thank you, ${esc(d.name.trim().split(/\s+/)[0])}!</h3>
+        <p class="muted">We've received ${esc(d.animalName.trim())}'s story. It will appear here once we've had a look.</p></div>`;
+      $("#storyDone").focus();
+    } catch (err) { busy(btn, false); showFieldErrors(form, err.fields); formError(form, err.message); }
+  });
 }
 
 function pAbout() {
@@ -294,12 +366,27 @@ function pHelp() {
       <div class="panel-card">${I.foster}<h3>Foster</h3><p>Give a rescue pet a temporary home while they wait for their family. We cover food and vet costs.</p><a class="btn light sm" href="/contact?topic=fostering">Ask about fostering</a></div>
       <div class="panel-card">${I.hands}<h3>Volunteer</h3><p>Help with transport, home checks, photos, social media or fundraising. Every hour counts.</p><a class="btn light sm" href="/contact?topic=volunteering">Offer to volunteer</a></div>
       <div class="panel-card">${I.gift}<h3>Donate</h3><p>Donations pay for vaccinations, neutering and emergency vet treatment.</p>
-        ${s.donateUrl ? `<a class="btn sm" href="${esc(s.donateUrl)}" target="_blank" rel="noopener noreferrer">Donate now</a>` : `<a class="btn light sm" href="/contact?topic=general">Ask how to donate</a>`}</div>
+        <a class="btn ${s.donateUrl ? "" : "light"} sm" href="/donate">${s.donateUrl ? "Donate" : "How to donate"}</a></div>
     </div></div></section>
     <section class="sec tint"><div class="wrap split"><div><div class="eyebrow">Need to rehome your pet?</div><h2>We're here to help, without judgement</h2>
       <p class="lead">Life changes. If you can no longer care for your pet, get in touch and we'll do our best to help find them a safe new home.</p>
       <div class="btn-row mt-m"><a class="btn" href="/contact?topic=rehoming">Talk to us</a></div></div>
       <div class="panel-card"><h3>Follow our rescues</h3><p>See new arrivals, updates and urgent appeals first.</p>${s.facebookUrl ? `<a class="btn light sm" href="${esc(s.facebookUrl)}" target="_blank" rel="noopener noreferrer">Follow on Facebook</a>` : ""}${s.instagramUrl ? `<a class="btn light sm" href="${esc(s.instagramUrl)}" target="_blank" rel="noopener noreferrer">Follow on Instagram</a>` : ""}</div>
+    </div></section>`;
+}
+
+function pDonate() {
+  const s = S(), url = s.donateUrl;
+  return `<div class="page-head"><div class="wrap"><div class="eyebrow">Donate</div><h1>Help us rescue the next pet</h1>
+    <p class="lead">${esc(s.rescueName)} relies on kind people. Every donation goes straight into caring for animals waiting for a home.</p></div></div>
+    <section class="sec tight"><div class="wrap split">
+      <div><h2>What your donation pays for</h2>
+        <ul class="ticks mt-m"><li>Vaccinations and microchips</li><li>Neutering and spaying</li><li>Flea, worm and parasite treatment</li><li>Emergency and ongoing vet care</li><li>Food, litter and bedding while pets wait for their family</li></ul>
+        ${s.charityNumber ? `<p class="muted mt-m">We're a registered charity (number ${esc(s.charityNumber)}). If you're a UK taxpayer, ask us about Gift Aid: it adds 25% to your donation at no cost to you.</p>` : ""}</div>
+      <div class="panel-card"><h3>Make a donation</h3>
+        ${url ? `<p>You'll be taken to our secure donation page. We never see or store your card details.</p><div class="btn-row"><a class="btn" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Donate now ↗</a></div>`
+          : `<p>Online donations are coming soon. In the meantime, please <a class="link" href="/contact?topic=general">get in touch</a> and we'll tell you how to help.</p>`}
+        <p class="hint">Can't donate? <a class="link" href="/help">Fostering, volunteering and sharing our posts</a> help just as much.</p></div>
     </div></section>`;
 }
 
@@ -315,11 +402,13 @@ function faqData() {
     ["The process", [
       ["How long does it take?", "Usually one to two weeks from application to adoption, depending on home check availability."],
       ["What is a home check?", "A friendly visit (sometimes by video) to see where your pet will live and answer your questions. It's about setting you both up for success, not judging your home."],
+      ["Can I be told when a new pet arrives?", "Yes. Join the waiting list at the bottom of the Meet our pets page, and we'll email you when a pet matching your wishes is listed."],
       ["Can I meet a pet before applying?", "Please apply first. It helps us arrange the right introductions, and there's no commitment until you've met and decided."],
     ]],
     ["After adoption", [
       ["What if it doesn't work out?", "Contact us. We'll always take our pets back and help find them a new home."],
       ["Will you help after adoption?", "Absolutely. We offer advice and support for the whole of your pet's life."],
+      ["Can I share how my pet is doing?", "We'd love that. Use the form on our Happy tails page to send a photo and a few words."],
     ]],
   ];
 }
@@ -373,11 +462,15 @@ function pPrivacy() {
   return `<div class="page-head"><div class="wrap"><div class="eyebrow">Your data</div><h1>Privacy notice</h1><p class="lead">How ${who} uses the information you give us.</p></div></div>
     <section class="sec tight"><div class="wrap prose">
       <h2>What we collect</h2><p>When you apply to adopt or send us a message, we collect the details you enter: your name, email address, phone number (optional), postcode and information about your home and household.</p>
+      <p>If you join our waiting list, we keep your name, email and the kind of pet you're looking for, only to email you when a matching pet arrives. Every alert has a link to stop them, which deletes your details immediately.</p>
+      <p>If you send us a happy tail, we publish the story, photo and pet's name you choose to share once we've checked it. Your email is never shown.</p>
       <h2>Why we collect it</h2><p>We use it only to process your application or reply to your message, arrange meetings and home checks, and keep a record of adoptions for the welfare of our animals. Our lawful basis is your consent and our legitimate interest in rehoming animals safely.</p>
       <h2>Who can see it</h2><p>Only ${who}. We never sell or share your details for marketing. Data is stored securely with our website host (Netlify), and emails are delivered by our email provider.</p>
       <h2>How long we keep it</h2><p>Applications that don't lead to an adoption are deleted within 12 months. Adoption records are kept for as long as needed for the animal's welfare.</p>
       <h2>Your rights</h2><p>You can ask to see, correct or delete your data at any time${s.email ? ` by emailing ${esc(s.email)}` : " by contacting us"}. You can also complain to the Information Commissioner's Office (ico.org.uk).</p>
-      <h2>Cookies</h2><p>The public website doesn't use tracking or advertising cookies. A single essential cookie is used only when the rescue's owner signs in to manage the site.</p>
+      <h2>Cookies and visit counts</h2><p>The public website doesn't use tracking or advertising cookies. A single essential cookie is used only when the rescue's owner signs in to manage the site.</p>
+      <p>We count how many times each page is viewed, so we know which pets people are interested in. These counts are anonymous: no cookies, no IP addresses and nothing that identifies you is stored. If your browser sends a "Do Not Track" or "Global Privacy Control" signal, your visits aren't counted at all.</p>
+      <h2>Donations</h2><p>Donations are handled by our payment provider on their own secure page. We never see or store your card details.</p>
     </div></section>`;
 }
 
@@ -403,8 +496,8 @@ function renderChrome() {
   $("#footer").innerHTML = `<div class="wrap"><div class="foot-grid">
     <div><a class="brand" href="/">${LOGO}<span><b>${esc(s.rescueName)}</b><small>${esc(s.tagline || "")}</small></span></a>
       <p>Rescuing pets and finding them loving forever homes${placeLine() ? ` in and around ${esc(placeLine())}` : ""}.</p></div>
-    <div><h4>Adopt</h4><ul><li><a href="/adopt">Meet our pets</a></li><li><a href="/how-to-adopt">How to adopt</a></li><li><a href="/how-to-adopt#apply">Apply online</a></li>${SITE.stories.length ? '<li><a href="/happy-tails">Happy tails</a></li>' : ""}</ul></div>
-    <div><h4>Rescue</h4><ul><li><a href="/about">About us</a></li><li><a href="/help">Ways to help</a></li><li><a href="/faq">FAQ</a></li><li><a href="/contact">Contact</a></li></ul></div>
+    <div><h4>Adopt</h4><ul><li><a href="/adopt">Meet our pets</a></li><li><a href="/how-to-adopt">How to adopt</a></li><li><a href="/how-to-adopt#apply">Apply online</a></li>${SITE.stories.length ? '<li><a href="/happy-tails">Happy tails</a></li>' : ""}<li><a href="/happy-tails#share-story">Share your happy tail</a></li><li><a href="/adopt#alerts">New-pet alerts</a></li></ul></div>
+    <div><h4>Rescue</h4><ul><li><a href="/about">About us</a></li><li><a href="/help">Ways to help</a></li><li><a href="/donate">Donate</a></li><li><a href="/faq">FAQ</a></li><li><a href="/contact">Contact</a></li></ul></div>
     <div><h4>Get in touch</h4><ul>${s.email ? `<li>${esc(s.email)}</li>` : ""}${s.phone ? `<li>${esc(s.phone)}</li>` : ""}${placeLine() ? `<li>${esc(placeLine())}</li>` : ""}
       ${s.facebookUrl ? `<li><a href="${esc(s.facebookUrl)}" target="_blank" rel="noopener noreferrer">Facebook</a></li>` : ""}${s.instagramUrl ? `<li><a href="${esc(s.instagramUrl)}" target="_blank" rel="noopener noreferrer">Instagram</a></li>` : ""}</ul></div></div>
     <div class="foot-base"><span>© ${year} ${esc(s.rescueName)}${s.charityNumber ? ` · Registered charity ${esc(s.charityNumber)}` : ""}</span>
@@ -414,15 +507,16 @@ function renderChrome() {
 /* ---------------- router ---------------- */
 const ROUTES = [
   [/^\/$/, () => [pHome(), "Rescued pets, loving homes"]],
-  [/^\/adopt\/?$/, () => [pAdopt(), "Meet our pets", renderAdoptGrid]],
+  [/^\/adopt\/?$/, () => [pAdopt(), "Meet our pets", () => { renderAdoptGrid(); renderAlertsForm(); }]],
   [/^\/adopt\/([a-z0-9-]+)\/?$/, m => { const a = listed().find(x => x.slug === m[1]); return [pPet(m[1]), a ? `${a.name}, ${animalLine(a).toLowerCase()}` : "Pet not found"]; }],
   [/^\/how-to-adopt\/?$/, () => [pHowTo(), "How to adopt", renderApplyForm]],
-  [/^\/happy-tails\/?$/, () => [pStories(), "Happy tails"]],
+  [/^\/happy-tails\/?$/, () => [pStories(), "Happy tails", renderStoryForm]],
   [/^\/about\/?$/, () => [pAbout(), "About us"]],
   [/^\/help\/?$/, () => [pHelp(), "Ways to help"]],
   [/^\/faq\/?$/, () => [pFaq(), "FAQ"]],
   [/^\/contact\/?$/, () => [pContact(), "Contact us", renderContactForm]],
   [/^\/privacy\/?$/, () => [pPrivacy(), "Privacy notice"]],
+  [/^\/donate\/?$/, () => [pDonate(), "Donate"]],
 ];
 function render({ focus = true } = {}) {
   const path = location.pathname;
@@ -435,6 +529,7 @@ function render({ focus = true } = {}) {
   after?.();
   document.body.classList.add("has-tabbar");
   document.body.classList.toggle("has-sticky", Boolean($(".sticky-apply", main)));
+  countView(path);
   const tab = path === "/" ? "home" : path.startsWith("/adopt") ? "pets" : path.startsWith("/how-to-adopt") ? "apply" : path.startsWith("/contact") ? "contact" : "";
   $$("#tabbar a").forEach(a => (a.dataset.tab === tab ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
   const sw = $("#swipe", main);
@@ -445,6 +540,11 @@ function render({ focus = true } = {}) {
   if (location.hash) requestAnimationFrame(() => document.getElementById(location.hash.slice(1))?.scrollIntoView());
   else window.scrollTo(0, 0);
   if (focus) main.focus({ preventScroll: true });
+}
+function countView(path) {
+  if (navigator.doNotTrack === "1" || navigator.globalPrivacyControl) return;
+  try { const k = "pf-seen:" + path; if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, "1"); } catch { /* storage blocked: still count */ }
+  fetch("/api/public/hit", { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ path }) }).catch(() => {});
 }
 function closeMenu() { $("#drawer").classList.remove("open"); $("#menuBtn").setAttribute("aria-expanded", "false"); }
 
