@@ -198,3 +198,21 @@ test("security: change password and email, sign out other devices, Netlify reset
   assert.equal((await login("her.own@example.com", "a brand new password")).status, 401);
   assert.equal((await login("owner@example.com", "emergency reset 2026")).status, 200);
 });
+
+test("photo thumbnails: stored with the upload, served at /thumb, fall back to full size, deleted together", async () => {
+  // The previous test ends with a Netlify-style password reset, so sign in again with the reset details.
+  cookie = (await call("POST", "/api/auth/login", { email: "owner@example.com", password: "emergency reset 2026" })).headers.get("set-cookie").split(";")[0];
+  const JPEG_1PX = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
+  const up = await call("POST", "/api/admin/images", { dataUrl: PNG, thumbDataUrl: JPEG_1PX }, { auth: true });
+  assert.equal(up.status, 200);
+  const full = await call("GET", `/api/images/${up.body.id}`), small = await call("GET", `/api/images/${up.body.id}/thumb`);
+  assert.equal(full.headers.get("content-type"), "image/png");
+  assert.equal(small.headers.get("content-type"), "image/jpeg", "thumbnail served");
+  const noThumb = await call("POST", "/api/admin/images", { dataUrl: PNG }, { auth: true });
+  assert.equal((await call("GET", `/api/images/${noThumb.body.id}/thumb`)).headers.get("content-type"), "image/png", "falls back to the full photo");
+  assert.equal((await call("GET", `/api/images/${up.body.id}/huge`)).status, 404, "unknown size rejected");
+  const badThumb = await call("POST", "/api/admin/images", { dataUrl: PNG, thumbDataUrl: "data:image/png;base64," + Buffer.from("not an image").toString("base64") }, { auth: true });
+  assert.equal(badThumb.status, 422, "thumbnail is checked like the photo");
+  await call("DELETE", `/api/admin/images/${up.body.id}`, undefined, { auth: true });
+  assert.equal((await call("GET", `/api/images/${up.body.id}/thumb`)).status, 404, "thumbnail deleted with the photo");
+});

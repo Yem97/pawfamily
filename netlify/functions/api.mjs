@@ -130,6 +130,9 @@ function decodeImage(dataUrl) {
   return { bytes: new Uint8Array(bytes), type };
 }
 
+/** Delete a photo and its thumbnail. */
+const deleteImage = (images, id) => Promise.all([images.delete(`img/${id}`), images.delete(`img/${id}-t`)]);
+
 /* ---------------- handlers ---------------- */
 async function publicSite({ data }) {
   const [settings, animals, stories] = await Promise.all([getSettings(data), listRecords(data, "animals/"), listRecords(data, "stories/")]);
@@ -178,9 +181,9 @@ async function submitMessage(req, ctx) {
   return ok({ id: rec.id });
 }
 
-async function getImage(id, { images }) {
-  if (!/^[a-f0-9]{24}$/.test(id)) return fail(404, "Not found.");
-  const img = await images.getBinary(`img/${id}`);
+async function getImage(id, { images }, variant) {
+  if (!/^[a-f0-9]{24}$/.test(id) || (variant && variant !== "thumb")) return fail(404, "Not found.");
+  const img = (variant === "thumb" && await images.getBinary(`img/${id}-t`)) || await images.getBinary(`img/${id}`);
   if (!img) return fail(404, "Not found.");
   return new Response(img.data, { status: 200, headers: {
     "content-type": img.contentType, "cache-control": "public, max-age=31536000, immutable",
@@ -227,12 +230,12 @@ async function adminAnimals(req, ctx, id) {
     const removed = (existing.photos || []).filter(p => !v.photos.includes(p));
     const rec = { ...existing, ...v, slug, updatedAt: nowIso() };
     await data.setJSON(`animals/${id}`, rec);
-    await Promise.all(removed.map(p => images.delete(`img/${p}`)));
+    await Promise.all(removed.map(p => deleteImage(images, p)));
     return ok({ animal: rec });
   }
   if (req.method === "DELETE") {
     await data.delete(`animals/${id}`);
-    await Promise.all((existing.photos || []).map(p => images.delete(`img/${p}`)));
+    await Promise.all((existing.photos || []).map(p => deleteImage(images, p)));
     return ok();
   }
   return fail(405, "Method not allowed.");
@@ -240,13 +243,15 @@ async function adminAnimals(req, ctx, id) {
 
 async function adminImages(req, ctx, id) {
   if (req.method === "POST" && !id) {
-    const body = await readJson(req, 4.5 * 1024 * 1024);
+    const body = await readJson(req, 5 * 1024 * 1024);
     const { bytes, type } = decodeImage(body.dataUrl);
+    const thumb = body.thumbDataUrl ? decodeImage(body.thumbDataUrl) : null; // ~600 px version for cards
     const iid = newId();
     await ctx.images.setBinary(`img/${iid}`, bytes, type);
+    if (thumb) await ctx.images.setBinary(`img/${iid}-t`, thumb.bytes, thumb.type);
     return ok({ id: iid, url: `/api/images/${iid}` });
   }
-  if (req.method === "DELETE" && /^[a-f0-9]{24}$/.test(id || "")) { await ctx.images.delete(`img/${id}`); return ok(); }
+  if (req.method === "DELETE" && /^[a-f0-9]{24}$/.test(id || "")) { await deleteImage(ctx.images, id); return ok(); }
   return fail(405, "Method not allowed.");
 }
 
@@ -279,14 +284,14 @@ async function adminStories(req, ctx, id) {
   if (!existing) return fail(404, "Not found.");
   if (req.method === "PUT") {
     const v = validate(await readJson(req), storySchema);
-    if (existing.photo && existing.photo !== v.photo) await images.delete(`img/${existing.photo}`);
+    if (existing.photo && existing.photo !== v.photo) await deleteImage(images, existing.photo);
     const rec = { ...existing, ...v, updatedAt: nowIso() };
     await data.setJSON(`stories/${id}`, rec);
     return ok({ story: rec });
   }
   if (req.method === "DELETE") {
     await data.delete(`stories/${id}`);
-    if (existing.photo) await images.delete(`img/${existing.photo}`);
+    if (existing.photo) await deleteImage(images, existing.photo);
     return ok();
   }
   return fail(405, "Method not allowed.");
@@ -374,7 +379,7 @@ async function route(req, context) {
     const m = req.method;
 
     if (area === "health" && m === "GET") return ok({ status: "up" });
-    if (area === "images" && m === "GET" && resource) return getImage(resource, stores);
+    if (area === "images" && m === "GET" && resource) return getImage(resource, stores, id);
 
     if (area === "public") {
       if (resource === "site" && m === "GET") return publicSite(stores);

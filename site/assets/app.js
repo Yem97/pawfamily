@@ -1,5 +1,11 @@
 // Pawfamily public website (single-page app, history routing). All dynamic text is escaped with esc().
-import { esc, $, $$, LABELS, money, feeFor, ageText, fmtDate, LOGO, PAW, photo, toast, api, showFieldErrors, formError, busy, field, check } from "./ui.js";
+import { esc, $, $$, LABELS, money, feeFor, ageText, fmtDate, LOGO, PAW, photo, toast, api, showFieldErrors, formError, busy, field, check, isPhone } from "./ui.js";
+
+const ICON = {
+  back: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
+  share: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>',
+};
+let navDepth = 0; // in-app navigations, so the phone back button can return to the previous page
 
 let SITE = null; // { settings, animals, stories }
 const filters = { species: "all", sex: "all", age: "all" };
@@ -34,21 +40,21 @@ const paras = text => String(text || "").split(/\n{2,}/).map(p => p.trim()).filt
 function card(a) {
   const fee = feeFor(a, S());
   return `<a class="card" href="/adopt/${esc(a.slug)}">
-    ${photo(a.photos?.[0], `${a.name}, ${animalLine(a).toLowerCase()}`, { pill: `<span class="pill ${esc(a.status)}">${esc(LABELS.status[a.status])}</span>` })}
+    ${photo(a.photos?.[0], `${a.name}, ${animalLine(a).toLowerCase()}`, { thumb: true, pill: `<span class="pill ${esc(a.status)}">${esc(LABELS.status[a.status])}</span>` })}
     <div class="info"><div class="top"><h3>${esc(a.name)}</h3></div>
       <span class="sub">${esc(animalLine(a))}${a.breed ? ` · ${esc(a.breed)}` : ""}</span>
       <span class="fee">${fee ? `Adoption fee ${esc(fee)}` : "Adoption fee: ask us"}</span></div></a>`;
 }
-const storyCard = s => `<article class="story">${s.photo ? photo(s.photo, s.animalName || s.title) : ""}<div class="body">
+const storyCard = s => `<article class="story">${s.photo ? photo(s.photo, s.animalName || s.title, { thumb: true }) : ""}<div class="body">
   ${s.animalName ? `<span class="who">${esc(s.animalName)}</span>` : ""}<h3>${esc(s.title)}</h3><p>${esc(s.body.length > 260 ? s.body.slice(0, 257).trim() + "…" : s.body)}</p></div></article>`;
 
-const trustStrip = () => `<div class="trust"><div class="wrap">
+const trustStrip = () => `<div class="trust o-trust"><div class="wrap">
   <div>${I.meet}<b>Meet before you pay</b><span>No fee until you've met your pet</span></div>
   <div>${I.vet}<b>Vet checked</b><span>Health checked, vaccinated and microchipped</span></div>
   <div>${I.home}<b>Home checks</b><span>Every adoption has a home visit and agreement</span></div>
   <div>${I.heart}<b>Support for life</b><span>We're here long after adoption day</span></div></div></div>`;
 
-const helpBand = () => `<section class="band"><div class="wrap"><div><div class="eyebrow">Every rescue needs a team</div>
+const helpBand = (extra = "") => `<section class="band ${extra}"><div class="wrap"><div><div class="eyebrow">Every rescue needs a team</div>
   <h2>Can't adopt right now? You can still help.</h2><p>Foster a pet while they wait for a home, volunteer with us, or donate towards vet bills.</p></div>
   <a class="btn blush" href="/help">Ways to help</a></div></section>`;
 
@@ -59,11 +65,13 @@ function pHome() {
   const hero = animals.find(a => a.photos?.length);
   const stories = SITE.stories.slice(0, 3);
   return `
-  <section class="hero"><div class="wrap">
+  <div class="home">
+  <section class="hero o-hero"><div class="wrap">
     <div>
       <div class="eyebrow">Pet rescue &amp; rehoming${placeLine() ? ` · ${esc(placeLine())}` : ""}</div>
       <h1>Every rescue deserves <em>a family</em>.</h1>
-      <p class="lead">We rescue cats and other pets, nurse them back to health, and match each one with a loving home. Meet the pets waiting for you.</p>
+      <p class="lead lead-long">We rescue cats and other pets, nurse them back to health, and match each one with a loving home. Meet the pets waiting for you.</p>
+      <p class="lead lead-short">Meet the pets waiting for a home. ${feeSentence()}.</p>
       <div class="btn-row"><a class="btn" href="/adopt">Meet our pets</a><a class="btn light" href="/how-to-adopt">How adoption works</a></div>
       <p class="fee-note">${feeSentence()}, vaccinations and microchipping.</p>
     </div>
@@ -71,16 +79,18 @@ function pHome() {
       <a class="hero-card" href="/adopt"><span class="num">${avail.length}</span><span><b>${avail.length === 1 ? "Pet" : "Pets"} looking for a home</b><span>Meet them now →</span></span></a></div>
   </div></section>
   ${trustStrip()}
-  <section class="sec"><div class="wrap">
-    <div class="sec-head"><div><div class="eyebrow">Looking for a home</div><h2>Meet our pets</h2><p>Each one has been vet checked and is ready to meet their new family.</p></div>${animals.length ? '<a class="link" href="/adopt">See all pets →</a>' : ""}</div>
-    <div class="grid">${animals.slice(0, 6).map(card).join("") || emptyPets()}</div>
+  <section class="sec o-pets"><div class="wrap">
+    <div class="sec-head"><div><div class="eyebrow">Looking for a home</div><h2><span class="lead-long">Meet our pets</span><span class="lead-short">Looking for a home</span></h2><p>Each one has been vet checked and is ready to meet their new family.</p></div>${animals.length ? `<a class="link" href="/adopt">See all${animals.length > 1 ? ` ${animals.length}` : ""}<span class="lead-long"> pets</span> →</a>` : ""}</div>
+    <div class="grid carousel">${animals.slice(0, 6).map(card).join("") || emptyPets()}</div>
   </div></section>
-  <section class="sec tint"><div class="wrap">
+  <section class="sec tint o-steps"><div class="wrap">
     <div class="sec-head"><div><div class="eyebrow">Simple and safe</div><h2>How adoption works</h2></div><a class="link" href="/how-to-adopt">Full details →</a></div>
-    ${stepsHtml()}
+    <div class="steps-full">${stepsHtml()}</div>
+    <a class="steps-pills" href="/how-to-adopt" aria-label="How adoption works: apply, chat, meet, adopt"><span>1 Apply</span><i aria-hidden="true">›</i><span>2 Chat</span><i aria-hidden="true">›</i><span>3 Meet</span><i aria-hidden="true">›</i><span>4 Adopt</span></a>
   </div></section>
-  ${stories.length ? `<section class="sec"><div class="wrap"><div class="sec-head"><div><div class="eyebrow">Happy tails</div><h2>Now living their best lives</h2></div><a class="link" href="/happy-tails">More stories →</a></div><div class="stories">${stories.map(storyCard).join("")}</div></div></section>` : ""}
-  ${helpBand()}`;
+  ${stories.length ? `<section class="sec o-stories"><div class="wrap"><div class="sec-head"><div><div class="eyebrow">Happy tails</div><h2>Now living their best lives</h2></div><a class="link" href="/happy-tails">More stories →</a></div><div class="stories carousel">${stories.map(storyCard).join("")}</div></div></section>` : ""}
+  ${helpBand("o-band")}
+  </div>`;
 }
 const emptyPets = () => `<div class="empty"><h3>New friends coming soon</h3><p>All our pets have found homes for now. Follow us${S().facebookUrl ? " on Facebook" : ""} to meet new arrivals first, or register your interest.</p>
   <div class="btn-row">${S().facebookUrl ? `<a class="btn sm" href="${esc(S().facebookUrl)}" target="_blank" rel="noopener noreferrer">Follow on Facebook</a>` : ""}<a class="btn light sm" href="/how-to-adopt#apply">Register interest</a></div></div>`;
@@ -119,7 +129,15 @@ function pPet(slug) {
   const fee = feeFor(a, S());
   const pics = a.photos?.length ? a.photos : [null];
   const healthAll = Object.keys(LABELS.health);
+  const pron = a.sex === "male" ? "his" : a.sex === "female" ? "her" : "their";
+  const chips = [LABELS.sex[a.sex], ageText(a), ...(a.traits || []).slice(0, 2).map(t => LABELS.traits[t] || t), ...(a.health?.includes("vaccinated") ? ["Vaccinated"] : [])].filter(Boolean);
+  const longStory = (a.story || "").length > 260;
+  const applyHref = `/how-to-adopt?pet=${encodeURIComponent(a.slug)}#apply`;
   return `<div class="wrap profile">
+    <div class="swipe-wrap"><div class="swipe" id="swipe" tabindex="0" aria-label="Photos of ${esc(a.name)}">${pics.map((p, i) => photo(p, `${a.name}, photo ${i + 1} of ${pics.length}`, { eager: i === 0 })).join("")}</div>
+      <button class="swipe-btn back" type="button" data-back aria-label="Back">${ICON.back}</button>
+      <button class="swipe-btn share" type="button" data-share="${esc(a.slug)}" aria-label="Share ${esc(a.name)}">${ICON.share}</button>
+      ${pics.length > 1 ? `<span class="swipe-count" id="swipeCount" aria-hidden="true">1 / ${pics.length}</span>` : ""}</div>
     <div class="gallery">${photo(pics[0], `${a.name}, photo 1 of ${pics.length}`, { cls: "main", eager: true })}
       ${pics.length > 1 ? `<div class="thumbs">${pics.map((p, i) => `<button type="button" data-photo="${esc(p)}" data-index="${i}" aria-pressed="${i === 0}" aria-label="Show photo ${i + 1}"><img src="/api/images/${esc(p)}" alt="" loading="lazy" data-fallback></button>`).join("")}</div>` : ""}</div>
     <div>
@@ -128,6 +146,7 @@ function pPet(slug) {
       <h1>${esc(a.name)}</h1>
       <p class="desc">${esc(animalLine(a))}${a.breed ? ` · ${esc(a.breed)}` : ""}</p>
       ${a.summary ? `<p class="lead mt-s">${esc(a.summary)}</p>` : ""}
+      <div class="fact-chips">${chips.map(c => `<span>${esc(c)}</span>`).join("")}</div>
       <dl class="facts">
         <div><dt>Type</dt><dd>${esc(LABELS.species[a.species])}</dd></div><div><dt>Breed</dt><dd>${esc(a.breed || "Mixed / unknown")}</dd></div>
         <div><dt>Sex</dt><dd>${esc(LABELS.sex[a.sex])}</dd></div><div><dt>Age</dt><dd>${esc(ageText(a))}</dd></div>
@@ -137,11 +156,13 @@ function pPet(slug) {
       <div class="btn-row mt-m"><a class="btn" href="/how-to-adopt?pet=${encodeURIComponent(a.slug)}#apply">${a.status === "reserved" ? `Apply as a backup home` : `Apply to adopt ${esc(a.name)}`}</a>
         <button class="btn light" type="button" data-share="${esc(a.slug)}">Share</button></div>
       ${a.status === "reserved" ? `<p class="hint mt-s">${esc(a.name)} is reserved. If the adoption doesn't go ahead, we'll contact backup applicants.</p>` : ""}
-      ${a.story ? `<h2>${esc(a.name)}'s story</h2><div class="prose">${paras(a.story)}</div>` : ""}
+      ${a.story ? `<h2>${esc(a.name)}'s story</h2><div class="story-text ${longStory ? "clamped" : ""}" id="storyText"><div class="prose">${paras(a.story)}</div></div>${longStory ? `<button class="link read-more" type="button" data-read-more>Read ${pron} full story</button>` : ""}` : ""}
       ${a.traits?.length ? `<h2>Personality</h2><div class="tags">${a.traits.map(t => `<span class="tag">${esc(LABELS.traits[t] || t)}</span>`).join("")}</div>` : ""}
       <h2>Health</h2><ul class="ticks">${healthAll.map(h => `<li class="${a.health?.includes(h) ? "" : "no"}">${esc(LABELS.health[h])}${a.health?.includes(h) ? "" : " (not yet)"}</li>`).join("")}</ul>
       ${a.healthNotes ? `<p class="muted mt-s">${esc(a.healthNotes)}</p>` : ""}
-    </div></div>`;
+    </div></div>
+    <div class="sticky-apply"><div><span class="amt">${fee ? esc(fee) : "Ask us"}</span><small>Adoption fee · pay after you meet</small></div>
+      <a class="btn" href="${applyHref}">${a.status === "reserved" ? "Apply as backup" : "Apply to adopt"}</a></div>`;
 }
 
 function pHowTo() {
@@ -167,26 +188,28 @@ function renderApplyForm() {
   $("#applyCard").innerHTML = `<h2>Adoption application</h2><p class="muted">Takes about 5 minutes. Fields marked optional can be left blank.</p>
   <form class="stack mt-m" id="${f}" novalidate>
     <div class="hp" aria-hidden="true"><label for="${f}-website">Leave this empty</label><input id="${f}-website" name="website" tabindex="-1" autocomplete="off"></div>
-    <fieldset><legend>The pet</legend>
+    <div class="wizard-progress" aria-live="polite"><div class="labels"><span data-l="1">1 You</span><span data-l="2">2 Your home</span><span data-l="3">3 Message &amp; send</span></div><div class="bar"><i></i></div></div>
+    <fieldset data-step="1"><legend>The pet</legend>
       ${field(f, "animalId", "Who would you like to adopt?", `<select <CONTROL>${options}<option value="any" ${options && pre ? "" : "selected"}>Any suitable pet</option></select>`)}</fieldset>
-    <fieldset><legend>About you</legend>
+    <fieldset data-step="1"><legend>About you</legend>
       <div class="row2">${field(f, "name", "Full name", `<input <CONTROL autocomplete="name" maxlength="100">`)}${field(f, "email", "Email", `<input <CONTROL type="email" autocomplete="email" maxlength="200">`)}</div>
       <div class="row2">${field(f, "phone", "Phone", `<input <CONTROL type="tel" autocomplete="tel" maxlength="30">`, { optional: true })}${field(f, "postcode", "Postcode", `<input <CONTROL autocomplete="postal-code" maxlength="12">`, { hint: "So we can plan your home check." })}</div></fieldset>
-    <fieldset><legend>Your home</legend>
+    <fieldset data-step="2"><legend>Your home</legend>
       <div class="row2">${field(f, "homeType", "Type of home", `<select <CONTROL>${Object.entries(LABELS.homeType).map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>`)}
         ${field(f, "outdoor", "Outdoor space", `<select <CONTROL>${Object.entries(LABELS.outdoor).map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>`)}</div>
       ${field(f, "household", "Who lives with you?", `<input <CONTROL maxlength="300" placeholder="For example: two adults and a 9-year-old">`)}
       ${field(f, "otherPets", "Other pets", `<input <CONTROL maxlength="300" placeholder="For example: one neutered male cat, aged 5">`, { optional: true })}
       ${field(f, "experience", "Experience with pets", `<textarea <CONTROL maxlength="800" placeholder="Pets you've had before, and anything you've learned."></textarea>`, { optional: true })}</fieldset>
-    <fieldset><legend>Anything else</legend>
+    <fieldset data-step="3"><legend>Anything else</legend>
       ${field(f, "message", "Why would this pet suit your home?", `<textarea <CONTROL maxlength="2000" placeholder="Your routine, how much time you're at home, what you're hoping for…"></textarea>`)}
       <label class="checkline"><input type="checkbox" name="consent" id="${f}-consent" aria-describedby="err-${f}-consent"><span>I agree that ${esc(S().rescueName)} may store these details to process my application, as described in the <a class="link" href="/privacy">privacy notice</a>.</span></label>
       <span class="err" id="err-${f}-consent"></span></fieldset>
-    <div><button class="btn" type="submit">Send application</button></div>
+    <div class="wizard-nav"><button class="btn light prev" type="button">Back</button><button class="btn next" type="button">Continue</button></div>
+    <div class="submit-row"><button class="btn" type="submit">Send application</button></div>
   </form>`;
   const form = $("#" + f);
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
+  const STEP_OF = { animalId: 1, name: 1, email: 1, phone: 1, postcode: 1, homeType: 2, outdoor: 2, household: 2, otherPets: 2, experience: 2, message: 3, consent: 3 };
+  const validate = () => {
     const d = Object.fromEntries(new FormData(form)); d.consent = form.consent.checked;
     const errs = {};
     for (const [k, l] of [["name", "Your name"], ["postcode", "Postcode"], ["household", "Who lives with you"], ["message", "Your message"]]) { const m = check.required(d[k], l); if (m) errs[k] = m; }
@@ -195,7 +218,31 @@ function renderApplyForm() {
     const em = check.email(d.email); if (em) errs.email = em;
     const ph = check.phone(d.phone); if (ph) errs.phone = ph;
     if (!d.consent) errs.consent = "Please confirm we may store your details to process your application.";
+    return { d, errs };
+  };
+  let step = 1;
+  const showStep = n => {
+    step = n;
+    $$("fieldset[data-step]", form).forEach(fs => fs.classList.toggle("on", Number(fs.dataset.step) === n));
+    form.classList.toggle("first", n === 1); form.classList.toggle("last", n === 3);
+    $$(".wizard-progress [data-l]", form).forEach(l => l.classList.toggle("on", Number(l.dataset.l) <= n));
+    $(".wizard-progress .bar i", form).style.width = `${(n / 3) * 100}%`;
+  };
+  wizardSync = () => { if (!form.isConnected) return; form.classList.toggle("wizard", isPhone()); if (isPhone()) showStep(step); };
+  wizardSync();
+  const scrollToForm = () => $("#applyCard").scrollIntoView({ block: "start", behavior: "smooth" });
+  $(".wizard-nav .next", form).addEventListener("click", () => {
+    const stepErrs = Object.fromEntries(Object.entries(validate().errs).filter(([k]) => STEP_OF[k] === step));
     formError(form, "");
+    if (showFieldErrors(form, stepErrs)) return;
+    showStep(step + 1); scrollToForm(); $(`fieldset[data-step="${step}"] input, fieldset[data-step="${step}"] select, fieldset[data-step="${step}"] textarea`, form)?.focus({ preventScroll: true });
+  });
+  $(".wizard-nav .prev", form).addEventListener("click", () => { showFieldErrors(form, {}); showStep(step - 1); scrollToForm(); });
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const { d, errs } = validate();
+    formError(form, "");
+    if (form.classList.contains("wizard") && Object.keys(errs).length) showStep(Math.min(...Object.keys(errs).map(k => STEP_OF[k] || 3)));
     if (showFieldErrors(form, errs)) return;
     const btn = $("button[type=submit]", form); busy(btn, true, "Sending…");
     try {
@@ -347,7 +394,11 @@ function renderChrome() {
   $("#nav").innerHTML = links.map(([p, l]) => `<a href="${p}">${l}</a>`).join("");
   $("#drawerLinks").innerHTML = links.map(([p, l]) => `<a href="${p}">${l}</a>`).join("") + `<a class="btn" href="/adopt">Meet our pets</a>`;
   const ann = $("#announce");
-  if (s.announcement) { ann.innerHTML = `${esc(s.announcement)} <a href="/adopt">See our pets →</a>`; ann.hidden = false; } else ann.hidden = true;
+  let dismissed = ""; try { dismissed = localStorage.getItem("pf-announce-dismissed") || ""; } catch {}
+  if (s.announcement && dismissed !== s.announcement) {
+    ann.innerHTML = `<span class="announce-text">${esc(s.announcement)} <a href="/adopt">See our pets →</a></span><button class="announce-x" type="button" data-dismiss-announce aria-label="Dismiss announcement">×</button>`;
+    ann.hidden = false;
+  } else ann.hidden = true;
   const year = new Date().getFullYear();
   $("#footer").innerHTML = `<div class="wrap"><div class="foot-grid">
     <div><a class="brand" href="/">${LOGO}<span><b>${esc(s.rescueName)}</b><small>${esc(s.tagline || "")}</small></span></a>
@@ -382,6 +433,12 @@ function render({ focus = true } = {}) {
   main.innerHTML = `<div class="view-in">${html}</div>`;
   document.title = `${title} · ${S().rescueName}`;
   after?.();
+  document.body.classList.add("has-tabbar");
+  document.body.classList.toggle("has-sticky", Boolean($(".sticky-apply", main)));
+  const tab = path === "/" ? "home" : path.startsWith("/adopt") ? "pets" : path.startsWith("/how-to-adopt") ? "apply" : path.startsWith("/contact") ? "contact" : "";
+  $$("#tabbar a").forEach(a => (a.dataset.tab === tab ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
+  const sw = $("#swipe", main);
+  if (sw && $("#swipeCount", main)) sw.addEventListener("scroll", () => { $("#swipeCount", main).textContent = `${Math.round(sw.scrollLeft / sw.clientWidth) + 1} / ${sw.children.length}`; }, { passive: true });
   const navPath = "/" + (path.split("/")[1] || "");
   $$("#nav a, #drawerLinks a").forEach(a => (a.getAttribute("href") === navPath ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
   closeMenu();
@@ -396,9 +453,12 @@ document.addEventListener("click", e => {
   if (a && a.origin === location.origin && !a.target && !a.hasAttribute("download") && !e.metaKey && !e.ctrlKey && !e.shiftKey && !a.pathname.startsWith("/admin") && !a.pathname.startsWith("/api")) {
     e.preventDefault();
     if (a.pathname === location.pathname && a.search === location.search && a.hash) { document.getElementById(a.hash.slice(1))?.scrollIntoView({ behavior: "smooth" }); history.replaceState(null, "", a.href); return; }
-    history.pushState(null, "", a.href); render(); return;
+    history.pushState(null, "", a.href); navDepth++; render(); return;
   }
   const b = e.target.closest("button"); if (!b) return;
+  if (b.hasAttribute("data-dismiss-announce")) { try { localStorage.setItem("pf-announce-dismissed", S().announcement); } catch {} $("#announce").hidden = true; return; }
+  if (b.hasAttribute("data-back")) { if (navDepth > 0) { navDepth--; history.back(); } else { history.pushState(null, "", "/adopt"); render(); } return; }
+  if (b.hasAttribute("data-read-more")) { $("#storyText")?.classList.remove("clamped"); b.remove(); return; }
   if (b.id === "menuBtn") { const open = $("#drawer").classList.toggle("open"); b.setAttribute("aria-expanded", String(open)); return; }
   if (b.dataset.fSpecies) { filters.species = b.dataset.fSpecies; renderAdoptGrid(); return; }
   if (b.hasAttribute("data-reset-filters")) { Object.assign(filters, { species: "all", sex: "all", age: "all" }); renderAdoptGrid(); return; }
@@ -416,6 +476,8 @@ document.addEventListener("click", e => {
 document.addEventListener("change", e => { const f = e.target.dataset?.f; if (f) { filters[f] = e.target.value; renderAdoptGrid(); } });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
 window.addEventListener("popstate", () => render({ focus: false }));
+let wizardSync = () => {};
+matchMedia("(max-width: 760px)").addEventListener("change", () => wizardSync());
 
 /* ---------------- boot ---------------- */
 (async function boot() {

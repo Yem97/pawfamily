@@ -174,18 +174,87 @@ await admin.click("#logout"); await admin.waitForSelector("#login");
 const after = await admin.evaluate(() => fetch("/api/admin/summary", { headers: { "x-requested-with": "pawfamily" } }).then(r => r.status));
 assert.equal(after, 401); step("backup downloads; sign-out ends the session");
 
-// 12. Phone layout: no sideways scroll on any page, menu works
-const phone = await browser.newContext({ viewport: { width: 375, height: 812 }, deviceScaleFactor: 2 });
-const m = await phone.newPage(); watch(m);
-for (const p of ["/", "/adopt", "/how-to-adopt", "/about", "/help", "/faq", "/contact", "/privacy", "/happy-tails"]) {
-  await m.goto(BASE + p); await m.waitForSelector("main h1");
-  assert.equal(await m.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `horizontal scroll on ${p}`);
+// 12. Phone layout: four common phone sizes, no sideways scrolling anywhere
+await page.goto(BASE + "/adopt"); await page.waitForSelector(".card");
+const slug = await page.evaluate(async () => (await (await fetch("/api/public/site")).json()).animals[0].slug);
+const PUBLIC = ["/", "/adopt", "/adopt/" + slug, "/how-to-adopt", "/about", "/help", "/faq", "/contact", "/privacy", "/happy-tails"];
+for (const [w, h, label] of [[360, 740, "small Android"], [375, 667, "iPhone SE"], [393, 852, "iPhone 15"], [412, 915, "Pixel"]]) {
+  const c = await browser.newContext({ viewport: { width: w, height: h }, isMobile: true, hasTouch: true });
+  const pg = await c.newPage(); watch(pg);
+  for (const p of PUBLIC) {
+    await pg.goto(BASE + p); await pg.waitForSelector("main h1");
+    assert.equal(await pg.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `horizontal scroll on ${p} (${label})`);
+  }
+  await pg.goto(BASE + "/admin/"); await pg.waitForSelector("#login");
+  assert.equal(await pg.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `horizontal scroll on admin (${label})`);
+  await c.close();
 }
-await m.goto(BASE + "/"); await m.waitForSelector(".hero"); await m.screenshot({ path: path.join(SHOTS, "09-phone-home.png") });
-await m.click("#menuBtn"); assert.ok(await m.isVisible("#drawer")); await m.screenshot({ path: path.join(SHOTS, "10-phone-menu.png") });
+step("phone: no horizontal scrolling on 11 pages at 4 phone sizes (360–412 px)");
+
+// 13. Phone design: pets first, swipeable cards, tab bar, dismissible announcement
+const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+const m = await phone.newPage(); watch(m);
+await m.goto(BASE + "/"); await m.waitForSelector(".hero h1");
+await m.screenshot({ path: path.join(SHOTS, "09-phone-home.png") });
+assert.ok(await m.isVisible("#tabbar"), "bottom tab bar visible");
+assert.equal(await m.getAttribute('#tabbar a[data-tab="home"]', "aria-current"), "page");
+assert.ok(!(await m.isVisible(".hero-pic")), "big hero photo hidden on phones");
+const yPets = (await m.locator(".o-pets").boundingBox()).y, yTrust = (await m.locator(".o-trust").boundingBox()).y;
+assert.ok(yPets < yTrust, "pets appear before the trust badges");
+assert.equal(await m.$eval(".o-pets .carousel", el => getComputedStyle(el).display), "flex", "home pets are a swipeable row");
+assert.ok(await m.isVisible("#announce")); await m.click("[data-dismiss-announce]"); assert.ok(!(await m.isVisible("#announce")));
+await m.reload(); await m.waitForSelector(".hero h1"); assert.ok(!(await m.isVisible("#announce")), "dismissal remembered");
+step("phone home: pets first, swipeable cards, tab bar, announcement dismissal remembered");
+
+// 14. Phone pets page: 2 per row, sticky filters
+await m.click('#tabbar a[data-tab="pets"]'); await m.waitForSelector(".card");
+assert.equal(await m.$eval("#petGrid", el => getComputedStyle(el).gridTemplateColumns.split(" ").length), 2, "two pets per row");
+assert.equal(await m.$eval("#filters", el => getComputedStyle(el).position), "sticky");
+await m.screenshot({ path: path.join(SHOTS, "10-phone-pets.png") });
+step("phone pets: 2 per row with sticky filter bar");
+
+// 15. Phone profile: sticky Apply bar replaces the tab bar; back button returns
+await m.click(".card"); await m.waitForSelector(".profile h1");
+assert.ok(await m.isVisible(".sticky-apply"), "sticky apply bar visible");
+assert.ok(!(await m.isVisible("#tabbar")), "tab bar hidden behind the apply bar");
+assert.match(await m.textContent(".sticky-apply"), /£150/);
+assert.ok(await m.isVisible(".fact-chips") && !(await m.isVisible(".facts")), "facts shown as chips");
+await m.screenshot({ path: path.join(SHOTS, "11-phone-profile.png") });
+await m.click("[data-back]"); await m.waitForSelector("#petGrid"); assert.match(m.url(), /\/adopt$/);
+await m.click(".card"); await m.waitForSelector(".sticky-apply");
+step("phone profile: swipe gallery, fact chips, sticky £150 Apply bar, back button");
+
+// 16. Phone application: 3 short steps
+await m.click(".sticky-apply .btn"); await m.waitForSelector("#application.wizard");
+assert.ok(await m.isVisible('fieldset[data-step="1"]') && !(await m.isVisible('fieldset[data-step="2"]')), "only step 1 shown");
+assert.ok(!(await m.isVisible("#application button[type=submit]")), "send button waits for the last step");
+await m.click(".wizard-nav .next"); await m.waitForSelector("#err-application-name:not(:empty)");
+assert.ok(!(await m.isVisible("#err-application-household:not(:empty)")), "only this step's fields are checked");
+await m.fill("#application-name", "Mia Patel"); await m.fill("#application-email", "mia@example.com"); await m.fill("#application-postcode", "LS6 2AB");
+await m.screenshot({ path: path.join(SHOTS, "12-phone-apply-step1.png") });
+await m.click(".wizard-nav .next"); await m.waitForSelector('fieldset[data-step="2"].on');
+await m.fill("#application-household", "Me and my partner"); await m.click(".wizard-nav .next"); await m.waitForSelector('fieldset[data-step="3"].on');
+await m.click(".wizard-nav .prev"); await m.waitForSelector('fieldset[data-step="2"].on');
+assert.equal(await m.inputValue("#application-household"), "Me and my partner", "answers kept when going back");
+await m.click(".wizard-nav .next"); await m.waitForSelector('fieldset[data-step="3"].on');
+await m.fill("#application-message", "Quiet flat, I work from home, and I'd love a lap cat."); await m.check("#application-consent");
+await m.click("#application button[type=submit]"); await m.waitForSelector("#applyDone");
+step("phone application: 3 steps, per-step checks, answers kept, sent");
+
+// 17. Owner dashboard on a phone
 await m.goto(BASE + "/admin/"); await m.waitForSelector("#login");
-assert.equal(await m.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "horizontal scroll on admin");
-step("phone: no horizontal scrolling on any page; menu opens");
+await m.fill("#login-email", "her.own@pawfamily.test"); await m.fill("#login-password", "my own lovely password"); await m.click("#login button");
+await m.waitForSelector(".stats");
+assert.equal(await m.$eval(".a-nav", el => getComputedStyle(el).position), "fixed", "bottom navigation");
+assert.ok(await m.isVisible(".fab"), "floating add button");
+await m.screenshot({ path: path.join(SHOTS, "13-phone-dashboard.png") });
+await m.click('.a-nav a[href="#more"]'); await m.waitForSelector(".more-links");
+assert.ok(await m.isVisible('.more-links a[href="#settings"]'));
+await m.click('.a-nav a[href="#applications"]'); await m.waitForSelector("details.app-more");
+assert.equal(await m.$eval("details.app-more", d => d.open), false, "application details start collapsed on phones");
+await m.click('.a-nav a[href="#pets"]'); await m.waitForSelector(".fab"); await m.click(".fab"); await m.waitForSelector("#pet");
+await m.click("[data-close]");
+step("phone dashboard: bottom nav, More page, collapsed details, floating + Add pet");
 
 await page.goto(BASE + "/"); await page.waitForSelector(".card"); await page.screenshot({ path: path.join(SHOTS, "11-home-full.png"), fullPage: true });
 

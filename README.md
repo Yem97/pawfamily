@@ -10,6 +10,8 @@ Website and owner dashboard for **Pawfamily**, a pet rescue and rehoming service
 
 **Public website**: Home · Meet our pets (filters by type, sex, age) · individual pet pages with photos, story, health checklist and adoption fee · How to adopt with the online application · Happy tails · About · Ways to help (foster, volunteer, donate, rehoming) · FAQ · Contact · Privacy notice.
 
+**On phones**: pets appear right after a short headline, as swipeable cards · bottom tab bar (Home, Pets, Apply, Contact) · 2 pets per row with a sticky filter bar · swipeable photo gallery and a sticky "£fee · Apply to adopt" bar on each pet · 3-step application form · dismissible announcement · small thumbnails for fast loading on mobile data. The dashboard gets bottom navigation and a floating "+ Add pet" button. Desktop layout is unchanged.
+
 **Owner dashboard**: Secure sign-in · overview · add and edit pets with up to 8 photos (resized automatically) · one-click status (available, reserved, adopted, hidden) · adoption applications with stages and private notes · contact messages · adoption stories · site settings (name, contact, fees, announcement bar) · full JSON backup.
 
 Optional email alerts for every application and message (via Resend).
@@ -46,8 +48,8 @@ See **[docs/SETUP.md](docs/SETUP.md)**. In short: run `npm run hash-password -- 
 ```bash
 npm install
 npm run dev          # http://localhost:8888
-npm test             # 11 API and security tests
-npm run test:e2e     # 15 browser checks (requires Playwright)
+npm test             # 13 API and security tests
+npm run test:e2e     # 21 browser checks incl. 4 phone sizes (requires Playwright)
 ```
 
 ## Security summary

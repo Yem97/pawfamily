@@ -41,15 +41,17 @@ export function ageText(a) {
 }
 export const fmtDate = (iso, long) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: long ? "long" : "short", year: "numeric" });
 export const fmtDateTime = iso => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-export const imgUrl = id => `/api/images/${encodeURIComponent(id)}`;
+export const imgUrl = (id, thumb = false) => `/api/images/${encodeURIComponent(id)}${thumb ? "/thumb" : ""}`;
+/** True when the phone layout is active (matches the CSS breakpoint). */
+export const isPhone = () => matchMedia("(max-width: 760px)").matches;
 
 export const LOGO = `<svg class="mark" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path fill="#1e1d20" d="M24 42.5S6.5 32 4.4 20.6C3 12.9 8.2 6.5 15 6.5c3.9 0 6.9 2 9 5 2.1-3 5.1-5 9-5 6.8 0 12 6.4 10.6 14.1C41.5 32 24 42.5 24 42.5z"/><g fill="#e9bcb9"><ellipse cx="24" cy="27.5" rx="5.6" ry="4.6"/><circle cx="16.6" cy="21" r="2.4"/><circle cx="20.6" cy="17" r="2.4"/><circle cx="27.4" cy="17" r="2.4"/><circle cx="31.4" cy="21" r="2.4"/></g></svg>`;
 export const PAW = `<svg viewBox="0 0 48 48" aria-hidden="true" focusable="false"><g fill="currentColor"><ellipse cx="24" cy="30" rx="9" ry="7.5"/><circle cx="12.5" cy="20" r="4"/><circle cx="19" cy="13" r="4"/><circle cx="29" cy="13" r="4"/><circle cx="35.5" cy="20" r="4"/></g></svg>`;
 
 /** Photo block with graceful empty and error states. */
-export function photo(id, alt, { cls = "", pill = "", eager = false } = {}) {
+export function photo(id, alt, { cls = "", pill = "", eager = false, thumb = false } = {}) {
   const inner = id
-    ? `<img src="${imgUrl(id)}" alt="${esc(alt)}" ${eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" data-fallback>`
+    ? `<img src="${imgUrl(id, thumb)}" alt="${esc(alt)}" ${eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" data-fallback>`
     : `<div class="ph-empty">${PAW}</div>`;
   return `<div class="ph ${cls} ${id ? "" : "ph-empty"}">${pill}${inner}</div>`;
 }
