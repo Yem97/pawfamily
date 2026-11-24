@@ -11,12 +11,17 @@ export const LABELS = {
   sex: { female: "Female", male: "Male", unknown: "Sex unknown" },
   age: { baby: "Baby", young: "Young", adult: "Adult", senior: "Senior" },
   ageHelp: { baby: "Under 6 months", young: "6 months – 2 years", adult: "2 – 8 years", senior: "8 years +" },
-  status: { available: "Available", reserved: "Reserved", adopted: "Adopted", hidden: "Hidden" },
+  status: { available: "Available", reserved: "Reserved", adopted: "Gone home", hidden: "Hidden" },
   traits: { "good-with-cats": "Good with cats", "good-with-dogs": "Good with dogs", "good-with-children": "Good with children", "indoor-only": "Indoor only",
     "needs-garden": "Needs a garden", shy: "Shy at first", playful: "Playful", "lap-cat": "Loves a lap", "pair-bonded": "Must go with a friend", "special-needs": "Special needs" },
   health: { "vet-checked": "Vet health check", vaccinated: "Vaccinated", microchipped: "Microchipped", neutered: "Neutered / spayed", "flea-wormed": "Flea and worm treated" },
-  appStatus: { new: "New", reviewing: "Reviewing", "home-check": "Home check", approved: "Approved", adopted: "Adopted", declined: "Declined" },
-  topic: { general: "General question", adopting: "Adopting", fostering: "Fostering", volunteering: "Volunteering", rehoming: "Rehoming my pet" },
+  appStatus: { new: "New", chatting: "Chatting", reserved: "Reserved", paid: "Paid in full", delivered: "Delivered", declined: "Declined" },
+  topic: { general: "General question", kittens: "Our kittens", reserving: "Reserving a kitten", delivery: "Delivery", litters: "Upcoming litters" },
+  intent: { reserve: "Reserve a kitten", buy: "Buy an available kitten" },
+  sexPref: { female: "Female", male: "Male", "no-preference": "No preference" },
+  docs: { contract: "Sales contract", "vaccination-record": "Vaccination record", microchip: "Microchip details", registration: "Registration / pedigree papers", "health-check": "Vet health check" },
+  litterStatus: { planned: "Planned", expected: "Expected", born: "Born", "fully-reserved": "Fully reserved" },
+  role: { mum: "Mum", dad: "Dad" },
   homeType: { house: "House", flat: "Flat / apartment", bungalow: "Bungalow", other: "Other" },
   outdoor: { "private-garden": "Private garden", "shared-garden": "Shared garden", balcony: "Balcony only", none: "No outdoor space" },
 };
@@ -25,6 +30,15 @@ export function money(amount, currency = "£") {
   if (amount === null || amount === undefined || amount === "") return "";
   const n = Number(amount);
   return currency + (Number.isInteger(n) ? n.toLocaleString("en-GB") : n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+}
+export function reservationFeeFor(animal, settings) {
+  const fee = animal?.reservationFee ?? settings.defaultReservationFee;
+  return fee === null || fee === undefined ? null : money(fee, settings.currency);
+}
+/** The date a kitten can go home (birth date + settings.goHomeWeeks), or null. */
+export function readyDate(animal, settings) {
+  if (!animal.birthDate) return null;
+  return new Date(Date.parse(animal.birthDate) + (Number(settings.goHomeWeeks) || 13) * 7 * 864e5);
 }
 export function feeFor(animal, settings) {
   const fee = animal?.fee ?? settings.defaultFee;

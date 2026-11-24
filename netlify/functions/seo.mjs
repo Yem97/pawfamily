@@ -6,7 +6,7 @@ import { listRecords } from "./lib/store.mjs";
 export const config = { path: ["/sitemap.xml", "/robots.txt"] };
 
 const PAGES = [["/", "daily", "1.0"], ["/adopt", "daily", "0.9"], ["/how-to-adopt", "monthly", "0.8"], ["/happy-tails", "weekly", "0.6"],
-  ["/about", "monthly", "0.6"], ["/help", "monthly", "0.5"], ["/donate", "monthly", "0.5"], ["/faq", "monthly", "0.6"], ["/contact", "yearly", "0.5"], ["/privacy", "yearly", "0.2"]];
+  ["/about", "monthly", "0.6"], ["/parents", "monthly", "0.7"], ["/litters", "weekly", "0.8"], ["/faq", "monthly", "0.6"], ["/contact", "yearly", "0.5"], ["/privacy", "yearly", "0.2"]];
 const xmlEsc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
 
 export default async function seo(req) {

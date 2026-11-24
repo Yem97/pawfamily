@@ -353,6 +353,11 @@ dialog::backdrop { background: rgb(30 29 32 / .5); }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin-top: 10px; font-size: 14.5px; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .notes { margin-top: 12px; display: grid; gap: 8px; }
+.pay-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.pay-grid .field label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.pay-grid input { min-height: 40px; padding: 6px 10px; font-size: 14.5px; }
+fieldset.docs { margin-top: 12px; }
+@media (max-width: 1100px) { .pay-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .notes textarea { width: 100%; min-height: 70px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; font-size: 15px; resize: vertical; }
 .photo-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .photo-grid .ph { aspect-ratio: 1; border-radius: 12px; }
@@ -376,6 +381,36 @@ dialog::backdrop { background: rgb(30 29 32 / .5); }
   .list .ctrl { grid-column: 1 / -1; justify-content: flex-start; }
   .photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Parents, litters, enquiry choices */
+.litters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.litter { border: 1px solid var(--line); border-radius: var(--r); padding: 28px; display: grid; gap: 12px; align-content: start; background: var(--white); }
+.litter .pair { display: flex; align-items: center; gap: 12px; }
+.litter .pair .ph { width: 72px; height: 72px; border-radius: 999px; border: 3px solid var(--white); box-shadow: 0 0 0 1px var(--line); flex: none; }
+.litter .x { font-family: var(--display); font-size: 30px; color: var(--blush-deep); }
+.litter h3 { font-size: 32px; }
+.litter dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 4px 0 0; font-size: 15px; }
+.litter dt { color: var(--muted); } .litter dd { margin: 0; font-weight: 600; }
+.cats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
+.cat .ph { aspect-ratio: 1; border-radius: var(--r); margin-bottom: 18px; }
+.cat h3 { font-size: 34px; margin: 6px 0 4px; }
+.cat .sub { color: var(--muted); }
+.cat p.note { margin: 12px 0; color: var(--ink-2); }
+.parents-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.parents-mini a { display: flex; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: inherit; }
+.parents-mini a:hover { border-color: var(--line-2); }
+.parents-mini .ph { width: 56px; height: 56px; border-radius: 999px; flex: none; }
+.parents-mini b { display: block; } .parents-mini span span { font-size: 13.5px; color: var(--muted); }
+fieldset.radios { border: 0; padding: 0; margin: 0; }
+fieldset.radios legend { font-size: 14.5px; font-weight: 600; font-family: var(--body); margin-bottom: 8px; }
+.radio-chip { position: relative; cursor: pointer; }
+.radio-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.radio-chip span { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border: 1px solid var(--line-2); border-radius: 999px; font-weight: 600; font-size: 15px; background: var(--white); }
+.radio-chip input:checked + span { background: var(--ink); border-color: var(--ink); color: var(--white); }
+.radio-chip input:focus-visible + span { outline: 3px solid var(--blush-deep); outline-offset: 2px; }
+.radio-chip input[aria-invalid="true"] + span { border-color: var(--danger); }
+@media (max-width: 900px) { .cats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .litters, .cats, .parents-mini { grid-template-columns: 1fr; } .litter { padding: 20px; } .litter h3 { font-size: 26px; } }
 
 /* =====================================================================
    Phone layout (≤ 760px): show what matters, hide the rest.
@@ -427,7 +462,7 @@ dialog::backdrop { background: rgb(30 29 32 / .5); }
 
   /* Home: pets straight after a short hero */
   .home { display: flex; flex-direction: column; }
-  .home > .o-hero { order: 0; } .home > .o-pets { order: 1; } .home > .o-trust { order: 2; } .home > .o-steps { order: 3; } .home > .o-stories { order: 4; } .home > .o-band { order: 5; }
+  .home > .o-hero { order: 0; } .home > .o-pets { order: 1; } .home > .o-trust { order: 2; } .home > .o-steps { order: 3; } .home > .o-litters { order: 4; } .home > .o-stories { order: 4; } .home > .o-band { order: 5; }
   .hero { padding-block: 20px 4px; background: none; }
   .hero .wrap { display: block; }
   .hero h1 { font-size: 38px; margin: 8px 0 6px; line-height: 1.05; }

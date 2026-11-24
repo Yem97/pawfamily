@@ -1,6 +1,6 @@
 # Pawfamily
 
-Website and owner dashboard for **Pawfamily**, a pet rescue and rehoming service. Rescued pets are matched with approved families for an adoption fee.
+Website and owner dashboard for **Pawfamily**, a home breeder of kittens. Kittens are raised and litter-trained at home, then reserved or bought for a kitten fee and delivered personally by the breeder with all ownership documents.
 
 - **Live site:** deployed automatically to Netlify from `main`
 - **Planned domain:** `pawfamilyfreehome.com`
@@ -8,15 +8,15 @@ Website and owner dashboard for **Pawfamily**, a pet rescue and rehoming service
 
 ## What it does
 
-**Public website**: Home · Meet our pets (filters by type, sex, age) · individual pet pages with photos, story, health checklist and adoption fee · How to adopt with the online application · Happy tails · About · Ways to help (foster, volunteer, donate, rehoming) · FAQ · Contact · Privacy notice.
+**Public website**: Home · Our kittens (filters by sex and age) · individual kitten pages with photos, story, parents, health checklist, kitten fee, refundable reservation fee and ready date · Upcoming litters (with "Reserve from this litter") · Meet the parents · How it works with the enquiry form · Happy tails · About · FAQ · Contact · Privacy notice.
 
-**On phones**: pets appear right after a short headline, as swipeable cards · bottom tab bar (Home, Pets, Apply, Contact) · 2 pets per row with a sticky filter bar · swipeable photo gallery and a sticky "£fee · Apply to adopt" bar on each pet · 3-step application form · dismissible announcement · small thumbnails for fast loading on mobile data. The dashboard gets bottom navigation and a floating "+ Add pet" button. Desktop layout is unchanged.
+**On phones**: kittens appear right after a short headline, as swipeable cards · bottom tab bar (Home, Pets, Enquire, Contact) · 2 kittens per row with a sticky filter bar · swipeable photo gallery and a sticky "Kitten fee · reservation £X · Enquire" bar on each kitten · 3-step enquiry form · dismissible announcement · small thumbnails for fast loading on mobile data. The dashboard gets bottom navigation and a floating "+ Add kitten" button. Desktop layout is unchanged.
 
-**Owner dashboard**: Secure sign-in · overview · add and edit pets with up to 8 photos (resized automatically) · one-click status (available, reserved, adopted, hidden) · adoption applications with stages and private notes · contact messages · adoption stories · site settings (name, contact, fees, announcement bar) · full JSON backup.
+**Owner dashboard**: Secure sign-in · overview · add and edit kittens with up to 8 photos (resized automatically), mum and dad, kitten fee and reservation fee · one-click status (available, reserved, gone home, hidden) · enquiries with the buyer's answers (reserve or buy, male or female, experience, children, delivery area), stages New → Chatting → Reserved → Paid in full → Delivered / Declined, agreed fee, deposit, balance, payment and delivery dates, documents checklist and private notes · parents · litters · contact messages · happy tails · site settings (business name, licence number, fees, go-home age, payment and delivery info, announcement bar) · full JSON backup.
 
-**Also**: Facebook/WhatsApp previews with each pet's photo · "Share your happy tail" (moderated) · waiting list with automatic new-pet emails · anonymous visitor stats (no cookies) · sitemap and robots for Google · automatic monthly backups · Donate page linked to the owner's provider.
+**Also**: Facebook/WhatsApp previews with each kitten's photo · "Share your happy tail" (moderated) · waiting list with automatic new-kitten emails · anonymous visitor stats (no cookies) · sitemap and robots for Google · automatic monthly backups.
 
-Optional email alerts for every application and message (via Resend).
+Optional email alerts for every enquiry and message (via Resend).
 
 ## Project layout
 
@@ -27,7 +27,7 @@ site/                  Static website (no build step)
   assets/              styles.css, ui.js (shared), app.js (public), admin.js (dashboard)
 netlify/functions/
   api.mjs              The whole API, one function at /api/*
-  share.mjs            Pet pages with Facebook/Google preview tags (/adopt/<pet>)
+  share.mjs            Kitten pages with Facebook/Google preview tags (/adopt/<kitten>)
   seo.mjs              /sitemap.xml and /robots.txt
   backup.mjs           Monthly scheduled backup
   lib/                 store (Netlify Blobs), auth, validation, email, http helpers
@@ -53,8 +53,8 @@ See **[docs/SETUP.md](docs/SETUP.md)**. In short: run `npm run hash-password -- 
 ```bash
 npm install
 npm run dev          # http://localhost:8888
-npm test             # 20 API, security and feature tests
-npm run test:e2e     # 27 browser checks incl. 4 phone sizes (requires Playwright)
+npm test             # 21 API, security and feature tests
+npm run test:e2e     # 28 browser checks incl. 4 phone sizes (requires Playwright)
 ```
 
 ## Security summary

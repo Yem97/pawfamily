@@ -33,9 +33,11 @@ Then go to **Deploys → Trigger deploy → Deploy site**, because new variables
 ## 3. First sign-in
 
 1. Open `https://<your-site>/admin/` and sign in.
-2. **Settings:** add the town, public email, phone, default adoption fee and what it includes. Check the Facebook link.
-3. **Pets → Add a pet:** add photos, story, health and fee.
-4. Open the public site and check everything looks right.
+2. **Settings:** add the business name, licence number, town, public email, phone, default kitten fee and what it includes, default reservation fee, go-home age (weeks), payment info and delivery info. Check the Facebook link.
+3. **Parents:** add each mum and dad with a photo.
+4. **Litters:** add upcoming litters (mum, dad, expected date) and tick *Published* to show them.
+5. **Kittens → Add kitten:** add photos, story, health, mum and dad, kitten fee and reservation fee.
+6. Open the public site and check everything looks right.
 
 ## 4. Email alerts (optional, recommended)
 
@@ -44,7 +46,7 @@ Then go to **Deploys → Trigger deploy → Deploy site**, because new variables
 3. Redeploy. Until a domain is verified in Resend, alerts can only go to the Resend account's own email address, which is fine for owner alerts.
 4. After buying `pawfamilyfreehome.com`, verify it in Resend (Domains), then set `MAIL_FROM` to an address at that domain.
 
-Even without email, every application and message is saved in the dashboard.
+Even without email, every enquiry and message is saved in the dashboard.
 
 ## 4b. Waiting-list alerts to the public
 
@@ -52,13 +54,9 @@ Alerts to people on the waiting list need emails **from your own domain** (Resen
 
 1. In Resend → **Domains → Add domain** → `pawfamilyfreehome.com`, and add the DNS records it shows (in Netlify DNS if you use it).
 2. Once it shows **Verified**, set `MAIL_FROM` in Netlify, e.g. `Pawfamily <hello@pawfamilyfreehome.com>`, and redeploy.
-3. From then on, listing a pet as **Available** emails everyone whose wishes match, once per pet. Each email has a one-click unsubscribe.
+3. From then on, listing a kitten as **Available** emails everyone whose wishes match, once per kitten. Each email has a one-click unsubscribe.
 
-## 4c. Donations
-
-Create a donation link with your provider (PayPal "Donate" button link, a Stripe Payment Link, Ko-fi or JustGiving), then paste it in Dashboard → **Settings → Donation link**. The Donate page, footer link and buttons switch on automatically. Card details never touch this website.
-
-## 4d. Automatic backups
+## 4c. Automatic backups
 
 Nothing to set up: Netlify runs `netlify/functions/backup.mjs` on the 1st of every month and keeps the last 12 backups (Dashboard → **Backup**). If email alerts are set up, the owner gets an email each time.
 
@@ -76,7 +74,7 @@ Whoever manages the Netlify account: run step 1 with a new temporary password, r
 
 ## Backups
 
-Dashboard → **Backup → Download backup**, once a month. The file contains adopters' personal details, so store it privately.
+Dashboard → **Backup → Download backup**, once a month. The file contains buyers' personal details and payment records, so store it privately.
 
 ## Local development
 
@@ -84,6 +82,10 @@ Dashboard → **Backup → Download backup**, once a month. The file contains ad
 npm install
 ADMIN_EMAIL=you@example.com ADMIN_PASSWORD_HASH='scrypt$…' SESSION_SECRET=$(openssl rand -base64 32) npm run dev
 # http://localhost:8888  (data saved in .data/, which is git-ignored)
-npm test           # API tests
-npm run test:e2e   # browser tests (needs Playwright)
+npm test           # 21 API tests
+npm run test:e2e   # 28 browser checks (needs Playwright)
 ```
+
+## Before taking enquiries (UK)
+
+Selling kittens you have bred is a licensable activity in England if you breed 3 or more litters a year or run it as a business (Animal Welfare (Licensing of Activities Involving Animals) Regulations 2018). Kittens must be at least 8 weeks old when they go home, and must be microchipped and registered before then (from June 2024). Check with the local council and put the licence number in **Settings**, so it shows in the footer.

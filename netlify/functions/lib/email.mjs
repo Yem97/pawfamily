@@ -41,9 +41,9 @@ export function notifyOwner(subject, rows, replyTo) {
 export function sendPetAlert({ to, name, rescueName, pet, petLine, fee, petUrl, unsubscribeUrl, replyTo }) {
   const subject = `${pet} is looking for a home at ${rescueName}`;
   const html = wrap(`<p>Hi ${esc(name)},</p>
-    <p>You asked us to let you know when a pet matching your wishes arrives. Meet <b>${esc(pet)}</b>: ${esc(petLine)}${fee ? `, adoption fee ${esc(fee)}` : ""}.</p>
+    <p>You asked us to let you know when a kitten matching your wishes is available. Meet <b>${esc(pet)}</b>: ${esc(petLine)}${fee ? `, kitten fee ${esc(fee)}` : ""}.</p>
     <p><a href="${esc(petUrl)}" style="display:inline-block;background:#1e1d20;color:#fff;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:600">Meet ${esc(pet)}</a></p>
     <p style="color:#66626a;font-size:13px">You're receiving this because you joined the ${esc(rescueName)} waiting list. <a href="${esc(unsubscribeUrl)}">Stop these emails</a>.</p>`);
-  const text = `Hi ${name},\n\nMeet ${pet}: ${petLine}${fee ? `, adoption fee ${fee}` : ""}.\n${petUrl}\n\nStop these emails: ${unsubscribeUrl}`;
+  const text = `Hi ${name},\n\nMeet ${pet}: ${petLine}${fee ? `, kitten fee ${fee}` : ""}.\n${petUrl}\n\nStop these emails: ${unsubscribeUrl}`;
   return sendEmail({ to, subject, html, text, replyTo });
 }

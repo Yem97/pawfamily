@@ -25,19 +25,28 @@
   to = "/index.html"
   status = 200
 [[redirects]]
-  from = "/help"
+  from = "/parents"
   to = "/index.html"
   status = 200
+[[redirects]]
+  from = "/litters"
+  to = "/index.html"
+  status = 200
+# Old rescue-era pages now point to their nearest equivalents.
+[[redirects]]
+  from = "/help"
+  to = "/litters"
+  status = 301
+[[redirects]]
+  from = "/donate"
+  to = "/"
+  status = 301
 [[redirects]]
   from = "/faq"
   to = "/index.html"
   status = 200
 [[redirects]]
   from = "/contact"
-  to = "/index.html"
-  status = 200
-[[redirects]]
-  from = "/donate"
   to = "/index.html"
   status = 200
 [[redirects]]

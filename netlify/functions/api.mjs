@@ -16,7 +16,8 @@ const AGE = ["baby", "young", "adult", "senior"];
 const ANIMAL_STATUS = ["available", "reserved", "adopted", "hidden"];
 const TRAITS = ["good-with-cats", "good-with-dogs", "good-with-children", "indoor-only", "needs-garden", "shy", "playful", "lap-cat", "pair-bonded", "special-needs"];
 const HEALTH = ["vaccinated", "microchipped", "neutered", "flea-wormed", "vet-checked"];
-const APP_STATUS = ["new", "reviewing", "home-check", "approved", "adopted", "declined"];
+const APP_STATUS = ["new", "chatting", "reserved", "paid", "delivered", "declined"];
+const DOCS = ["contract", "vaccination-record", "microchip", "registration", "health-check"];
 const MSG_STATUS = ["new", "replied"];
 const MAX_IMAGE = 3 * 1024 * 1024;
 
@@ -41,7 +42,7 @@ async function rateLimit(store, scope, key, limit, windowMs) {
 /* ---------------- shared loaders ---------------- */
 const publicAnimal = a => ({
   id: a.id, slug: a.slug, name: a.name, species: a.species, breed: a.breed, sex: a.sex, ageGroup: a.ageGroup, birthDate: a.birthDate,
-  status: a.status, fee: a.fee, summary: a.summary, story: a.story, photos: a.photos, traits: a.traits, health: a.health,
+  status: a.status, fee: a.fee, reservationFee: a.reservationFee ?? null, mum: a.mum || "", dad: a.dad || "", summary: a.summary, story: a.story, photos: a.photos, traits: a.traits, health: a.health,
   healthNotes: a.healthNotes, featured: a.featured, createdAt: a.createdAt,
 });
 
@@ -55,6 +56,9 @@ const animalSchema = {
   birthDate: r.date(),
   status: r.oneOf(ANIMAL_STATUS, { label: "Status" }),
   fee: r.money(),
+  reservationFee: r.money(),
+  mum: v => (!v ? [""] : /^[a-f0-9]{24}$/.test(String(v)) ? [String(v)] : [undefined, "Choose a parent from the list."]),
+  dad: v => (!v ? [""] : /^[a-f0-9]{24}$/.test(String(v)) ? [String(v)] : [undefined, "Choose a parent from the list."]),
   summary: r.text(180, { label: "Short summary" }),
   story: r.text(5000, { label: "Story" }),
   photos: r.idList(8),
@@ -65,23 +69,25 @@ const animalSchema = {
 };
 const applicationSchema = {
   animalId: r.text(40),
+  intent: r.oneOf(["reserve", "buy"], { label: "Reserve or buy" }),
+  sexPreference: r.oneOf(["female", "male", "no-preference"], { label: "Male or female", fallback: "no-preference" }),
   name: r.text(100, { required: true, min: 2, label: "Your name" }),
   email: r.email(),
   phone: r.phone(),
-  postcode: r.text(12, { required: true, label: "Postcode" }),
-  homeType: r.oneOf(["house", "flat", "bungalow", "other"], { label: "Home type" }),
-  outdoor: r.oneOf(["private-garden", "shared-garden", "balcony", "none"], { label: "Outdoor space" }),
-  household: r.text(300, { required: true, label: "Who lives with you" }),
+  deliveryArea: r.text(60, { required: true, label: "Town or postcode for delivery" }),
+  experience: r.oneOf(["yes", "no"], { label: "Experience with kittens" }),
+  experienceDetails: r.text(800, { label: "Your experience" }),
+  children: r.oneOf(["no", "yes"], { label: "Children at home" }),
+  childrenAges: r.text(100, { label: "Children's ages" }),
   otherPets: r.text(300, { label: "Other pets" }),
-  experience: r.text(800, { label: "Experience" }),
-  message: r.text(2000, { required: true, min: 10, label: "Your message" }),
+  message: r.text(2000, { label: "Your message" }),
   consent: r.bool(),
 };
 const messageSchema = {
   name: r.text(100, { required: true, min: 2, label: "Your name" }),
   email: r.email(),
   phone: r.phone(),
-  topic: r.oneOf(["general", "adopting", "fostering", "volunteering", "rehoming"], { label: "Topic", fallback: "general" }),
+  topic: r.oneOf(["general", "kittens", "reserving", "delivery", "litters"], { label: "Topic", fallback: "general" }),
   message: r.text(3000, { required: true, min: 10, label: "Your message" }),
 };
 const storySchema = {
@@ -92,15 +98,19 @@ const storySchema = {
   published: r.bool(),
 };
 const settingsSchema = {
-  rescueName: r.text(60, { required: true, label: "Rescue name" }),
+  rescueName: r.text(60, { required: true, label: "Business name" }),
   tagline: r.text(120, { label: "Tagline" }),
   town: r.text(60, { label: "Town" }), region: r.text(60, { label: "Region" }),
   email: r.email({ required: false }), phone: r.phone(),
-  facebookUrl: r.url(), instagramUrl: r.url(), donateUrl: r.url(),
-  charityNumber: r.text(40, { label: "Charity number" }),
+  facebookUrl: r.url(), instagramUrl: r.url(),
+  licenceNumber: r.text(60, { label: "Licence number" }),
   currency: r.text(3, { required: true, label: "Currency symbol" }),
   defaultFee: r.money(),
-  feeIncludes: r.text(400, { label: "What the fee includes" }),
+  defaultReservationFee: r.money(),
+  goHomeWeeks: v => { if (v === "" || v === null || v === undefined) return [13]; const n = Number(v); return Number.isInteger(n) && n >= 8 && n <= 20 ? [n] : [undefined, "Enter a number of weeks between 8 and 20."]; },
+  feeIncludes: r.text(400, { label: "What the kitten fee includes" }),
+  deliveryInfo: r.text(800, { label: "Delivery information" }),
+  paymentInfo: r.text(800, { label: "Payment information" }),
   announcement: r.text(160, { label: "Announcement" }),
   aboutText: r.text(5000, { label: "About text" }),
 };
@@ -125,9 +135,12 @@ const deleteImage = (images, id) => Promise.all([images.delete(`img/${id}`), ima
 
 /* ---------------- handlers ---------------- */
 async function publicSite({ data }) {
-  const [settings, animals, stories] = await Promise.all([getSettings(data), listRecords(data, "animals/"), listRecords(data, "stories/")]);
+  const [settings, animals, stories, parents, litters] = await Promise.all([getSettings(data), listRecords(data, "animals/"), listRecords(data, "stories/"),
+    listRecords(data, "parents/"), listRecords(data, "litters/")]);
   return ok({
     settings,
+    parents: parents.map(({ id, name, role, breed, colour, born, about, healthNotes, photo }) => ({ id, name, role, breed, colour, born, about, healthNotes, photo })),
+    litters: litters.filter(l => l.published).map(({ id, mum, dad, status, when, details }) => ({ id, mum, dad, status, when, details })),
     animals: animals.filter(a => a.status === "available" || a.status === "reserved").map(publicAnimal),
     stories: stories.filter(s => s.published).map(({ id, title, animalName, body, photo, createdAt }) => ({ id, title, animalName, body, photo, createdAt })),
   }, { "cache-control": "no-cache" }); // always revalidate: owner changes must show on the next page load (req. A4)
@@ -141,19 +154,22 @@ async function submitApplication(req, ctx) {
   honeypot(body);
   const limiter = await rateLimit(ctx.data, "forms", clientKey(req, ctx.context), 5, 3600e3);
   const v = validate(body, applicationSchema);
-  if (!v.consent) throw new HttpError(422, "Please check the highlighted fields.", { consent: "Please confirm we may store your details to process your application." });
-  let animalName = "Any suitable pet";
+  if (!v.consent) throw new HttpError(422, "Please check the highlighted fields.", { consent: "Please confirm we may store your details to reply to your enquiry." });
+  if (v.children === "yes" && !v.childrenAges) throw new HttpError(422, "Please check the highlighted fields.", { childrenAges: "Please tell us the children's ages." });
+  let animalName = "Any available kitten";
   if (v.animalId && v.animalId !== "any") {
     const a = await ctx.data.getJSON(`animals/${v.animalId}`);
-    if (!a || !["available", "reserved"].includes(a.status)) throw new HttpError(422, "That pet is no longer listed. Please choose another or 'Any suitable pet'.", { animalId: "No longer listed." });
+    if (!a || !["available", "reserved"].includes(a.status)) throw new HttpError(422, "That kitten is no longer listed. Please choose another or 'Any available kitten'.", { animalId: "No longer listed." });
     animalName = a.name;
   } else v.animalId = "any";
   const rec = { id: newId(), createdAt: nowIso(), status: "new", notes: "", animalName, ...v };
   await ctx.data.setJSON(`applications/${sortKey()}_${rec.id}`, rec);
   await limiter.hit();
-  await notifyOwner(`New adoption application: ${animalName}`, [
-    ["Pet", animalName], ["Name", v.name], ["Email", v.email], ["Phone", v.phone], ["Postcode", v.postcode],
-    ["Home", `${v.homeType}, ${v.outdoor}`], ["Household", v.household], ["Other pets", v.otherPets], ["Experience", v.experience], ["Message", v.message],
+  await notifyOwner(`New enquiry (${v.intent === "reserve" ? "reserve" : "buy now"}): ${animalName}`, [
+    ["Kitten", animalName], ["Wants to", v.intent === "reserve" ? "Reserve" : "Buy an available kitten"], ["Male or female", v.sexPreference],
+    ["Name", v.name], ["Email", v.email], ["Phone", v.phone], ["Delivery area", v.deliveryArea],
+    ["Experience with kittens", v.experience + (v.experienceDetails ? `: ${v.experienceDetails}` : "")], ["Children", v.children + (v.childrenAges ? ` (${v.childrenAges})` : "")],
+    ["Other pets", v.otherPets], ["Message", v.message],
   ], v.email);
   return ok({ id: rec.id });
 }
@@ -247,6 +263,9 @@ async function adminImages(req, ctx, id) {
   return fail(405, "Method not allowed.");
 }
 
+/** A date that may be in the future (e.g. a planned delivery). */
+const dateAny = v => { const s = String(v ?? "").trim(); if (!s) return [""]; return /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)) ? [s] : [undefined, "Enter a valid date."]; };
+
 async function adminRecords(req, ctx, id, { prefix, statuses, plural }) {
   const { data } = ctx;
   if (req.method === "GET" && !id) return ok({ [plural]: await listRecords(data, prefix) });
@@ -254,8 +273,11 @@ async function adminRecords(req, ctx, id, { prefix, statuses, plural }) {
   const existing = key && await data.getJSON(key);
   if (!existing) return fail(404, "Not found.");
   if (req.method === "PUT") {
-    const v = validate(await readJson(req), { status: r.oneOf(statuses, { label: "Status" }), notes: r.text(3000, { label: "Notes" }) });
-    const rec = { ...existing, status: v.status, ...(prefix === "applications/" ? { notes: v.notes } : {}), updatedAt: nowIso() };
+    const isEnquiry = prefix === "applications/";
+    const v = validate(await readJson(req), { status: r.oneOf(statuses, { label: "Status" }), notes: r.text(3000, { label: "Notes" }),
+      ...(isEnquiry ? { agreedFee: r.money(), depositAmount: r.money(), depositDate: r.date(), paidInFullDate: r.date(), deliveryDate: dateAny, docs: r.pick(DOCS) } : {}) });
+    const rec = { ...existing, status: v.status, ...(isEnquiry ? { notes: v.notes, agreedFee: v.agreedFee, depositAmount: v.depositAmount, depositDate: v.depositDate,
+      paidInFullDate: v.paidInFullDate, deliveryDate: v.deliveryDate, docs: v.docs } : {}), updatedAt: nowIso() };
     await data.setJSON(key, rec);
     return ok({ record: rec });
   }
@@ -305,7 +327,8 @@ async function adminSummary({ data }) {
   const count = (list, s) => list.filter(x => x.status === s).length;
   return ok({
     animals: { total: animals.length, available: count(animals, "available"), reserved: count(animals, "reserved"), adopted: count(animals, "adopted"), hidden: count(animals, "hidden") },
-    applications: { total: applications.length, new: count(applications, "new"), open: applications.filter(a => !["adopted", "declined"].includes(a.status)).length },
+    applications: { total: applications.length, new: count(applications, "new"), open: applications.filter(a => !["delivered", "declined"].includes(a.status)).length,
+      reserved: count(applications, "reserved"), paid: count(applications, "paid") },
     messages: { total: messages.length, new: count(messages, "new") },
     stories: { total: stories.length, published: stories.filter(s => s.published).length, pending: stories.filter(s => s.submitted && !s.published).length },
     waitlist: { total: waitlistCount },
@@ -348,6 +371,50 @@ async function adminSecurity(req, ctx, creds) {
   await limiter.clear();
   // Keep this device signed in with the new version; every other session is now invalid.
   return ok({ email: rec.email, passwordChanged: Boolean(newPassword) }, { "set-cookie": createSessionCookie(req, `d${version}`) });
+}
+
+/* ---------------- parents & litters ---------------- */
+const parentSchema = {
+  name: r.text(60, { required: true, label: "Name" }),
+  role: r.oneOf(["mum", "dad"], { label: "Mum or dad" }),
+  breed: r.text(80, { label: "Breed" }),
+  colour: r.text(80, { label: "Colour" }),
+  born: r.text(20, { label: "Born" }),
+  about: r.text(1500, { label: "About" }),
+  healthNotes: r.text(600, { label: "Health" }),
+  photo: v => { const s = String(v || ""); if (!s) return [""]; return /^[a-f0-9]{24}$/.test(s) ? [s] : [undefined, "That photo isn't valid. Upload it again."]; },
+};
+const litterSchema = {
+  mum: v => (!v ? [""] : /^[a-f0-9]{24}$/.test(String(v)) ? [String(v)] : [undefined, "Choose a parent from the list."]),
+  dad: v => (!v ? [""] : /^[a-f0-9]{24}$/.test(String(v)) ? [String(v)] : [undefined, "Choose a parent from the list."]),
+  status: r.oneOf(["planned", "expected", "born", "fully-reserved"], { label: "Status" }),
+  when: r.text(60, { required: true, label: "Expected or born" }),
+  details: r.text(800, { label: "Details" }),
+  published: r.bool(),
+};
+async function adminCollection(req, { data, images }, id, prefix, schema, plural, photoKey) {
+  if (req.method === "GET" && !id) return ok({ [plural]: await listRecords(data, prefix) });
+  if (req.method === "POST" && !id) {
+    const v = validate(await readJson(req), schema);
+    const rec = { id: newId(), ...v, createdAt: nowIso(), updatedAt: nowIso() };
+    await data.setJSON(`${prefix}${rec.id}`, rec);
+    return ok({ record: rec });
+  }
+  const existing = id && /^[a-f0-9]{24}$/.test(id) && await data.getJSON(`${prefix}${id}`);
+  if (!existing) return fail(404, "Not found.");
+  if (req.method === "PUT") {
+    const v = validate(await readJson(req), schema);
+    if (photoKey && existing[photoKey] && existing[photoKey] !== v[photoKey]) await deleteImage(images, existing[photoKey]);
+    const rec = { ...existing, ...v, updatedAt: nowIso() };
+    await data.setJSON(`${prefix}${id}`, rec);
+    return ok({ record: rec });
+  }
+  if (req.method === "DELETE") {
+    await data.delete(`${prefix}${id}`);
+    if (photoKey && existing[photoKey]) await deleteImage(images, existing[photoKey]);
+    return ok();
+  }
+  return fail(405, "Method not allowed.");
 }
 
 /* ---------------- waiting list ---------------- */
@@ -554,6 +621,8 @@ async function route(req, context) {
         case "applications": return adminRecords(req, ctx, id, { prefix: "applications/", statuses: APP_STATUS, plural: "applications" });
         case "messages": return adminRecords(req, ctx, id, { prefix: "messages/", statuses: MSG_STATUS, plural: "messages" });
         case "stories": return adminStories(req, ctx, id);
+        case "parents": return adminCollection(req, ctx, id, "parents/", parentSchema, "parents", "photo");
+        case "litters": return adminCollection(req, ctx, id, "litters/", litterSchema, "litters");
         case "settings": return adminSettings(req, stores);
         case "export": if (m === "GET") return adminExport(stores); break;
         case "security": return adminSecurity(req, ctx, creds);

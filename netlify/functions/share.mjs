@@ -17,7 +17,7 @@ export function petHead(html, { animal: a, settings: s, origin }) {
   const kind = a.breed || speciesWords[a.species] || "pet";
   const line = [a.sex !== "unknown" ? a.sex : "", a.ageGroup, kind].filter(Boolean).join(" ");
   const title = `${a.name} · ${s.rescueName}`;
-  const desc = `${a.name} is a ${line} looking for a loving home${s.town ? ` in ${s.town}` : ""}.${a.summary ? ` ${a.summary}` : ""}${fee ? ` Adoption fee ${fee}.` : ""}`.slice(0, 280);
+  const desc = `${a.name} is a ${line} ready for a loving home${s.town ? ` in ${s.town}` : ""}.${a.summary ? ` ${a.summary}` : ""}${fee ? ` Kitten fee ${fee}.` : ""}`.slice(0, 280);
   const url = `${origin}/adopt/${a.slug}`;
   const image = a.photos?.[0] ? `${origin}/api/images/${a.photos[0]}` : `${origin}/assets/og-image.jpg`;
   let out = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`);

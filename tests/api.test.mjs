@@ -95,25 +95,54 @@ test("image upload rejects non-images, even when labelled as images", async () =
   assert.equal((await call("POST", "/api/admin/images", { dataUrl: "data:text/html;base64,PGI+" }, { auth: true })).status, 422);
 });
 
-test("adoption application: validation, consent, honeypot, storage and status updates", async () => {
-  const base = { animalId: animal.id, name: "Sam Lee", email: "sam@example.com", phone: "07700 900123", postcode: "AB1 2CD",
-    homeType: "house", outdoor: "private-garden", household: "Two adults", otherPets: "", experience: "Had cats for years", message: "We would love to meet Bluebell.", consent: true };
-  const missing = await call("POST", "/api/public/applications", { ...base, email: "bad", message: "hi" });
+test("kitten enquiry: her questions, validation, consent, honeypot, payments, delivery and documents", async () => {
+  const base = { animalId: animal.id, intent: "reserve", sexPreference: "female", name: "Sam Lee", email: "sam@example.com", phone: "07700 900123", deliveryArea: "LS1 4AP",
+    experience: "yes", experienceDetails: "Two cats before", children: "yes", childrenAges: "6 and 9", otherPets: "", message: "", consent: true };
+  const missing = await call("POST", "/api/public/applications", { ...base, email: "bad", intent: "", experience: "", deliveryArea: "" });
   assert.equal(missing.status, 422);
-  assert.ok(missing.body.fields.email && missing.body.fields.message);
+  assert.ok(missing.body.fields.email && missing.body.fields.intent && missing.body.fields.experience && missing.body.fields.deliveryArea);
+  const noAges = await call("POST", "/api/public/applications", { ...base, childrenAges: "" });
+  assert.equal(noAges.status, 422); assert.ok(noAges.body.fields.childrenAges, "children's ages needed when there are children");
   assert.equal((await call("POST", "/api/public/applications", { ...base, consent: false })).status, 422);
   assert.equal((await call("POST", "/api/public/applications", { ...base, website: "http://spam" })).status, 422);
   assert.equal((await call("POST", "/api/public/applications", base, { headers: { origin: "https://evil.example" } })).status, 403);
 
-  const okRes = await call("POST", "/api/public/applications", base);
-  assert.equal(okRes.status, 200);
+  assert.equal((await call("POST", "/api/public/applications", base)).status, 200, "message is optional");
   const list = await call("GET", "/api/admin/applications", undefined, { auth: true });
   assert.equal(list.body.applications.length, 1);
-  assert.equal(list.body.applications[0].animalName, "Bluebell");
-  const id = list.body.applications[0].id;
-  const upd = await call("PUT", `/api/admin/applications/${id}`, { status: "home-check", notes: "Visit Tuesday" }, { auth: true });
-  assert.equal(upd.body.record.status, "home-check");
-  assert.equal((await call("PUT", `/api/admin/applications/${id}`, { status: "bogus" }, { auth: true })).status, 422);
+  const enq = list.body.applications[0];
+  assert.equal(enq.animalName, "Bluebell"); assert.equal(enq.intent, "reserve"); assert.equal(enq.childrenAges, "6 and 9");
+
+  const upd = await call("PUT", `/api/admin/applications/${enq.id}`, { status: "reserved", notes: "Called Tuesday", agreedFee: 150, depositAmount: 50, depositDate: "2026-11-20",
+    paidInFullDate: "", deliveryDate: "2027-01-15", docs: ["contract", "vaccination-record", "bogus"] }, { auth: true });
+  assert.equal(upd.status, 200);
+  const rec = upd.body.record;
+  assert.equal(rec.status, "reserved"); assert.equal(rec.depositAmount, 50); assert.equal(rec.deliveryDate, "2027-01-15", "future delivery dates allowed");
+  assert.deepEqual(rec.docs, ["contract", "vaccination-record"], "unknown documents dropped");
+  assert.equal((await call("PUT", `/api/admin/applications/${enq.id}`, { status: "adopted" }, { auth: true })).status, 422, "old rescue stages rejected");
+  assert.equal((await call("PUT", `/api/admin/applications/${enq.id}`, { status: "paid", depositDate: "2099-01-01" }, { auth: true })).status, 422, "payment dates can't be in the future");
+  const sum = await call("GET", "/api/admin/summary", undefined, { auth: true });
+  assert.equal(sum.body.applications.reserved, 1);
+});
+
+test("parents and litters: owner manages them; only published litters are public", async () => {
+  const mum = await call("POST", "/api/admin/parents", { name: "Clover", role: "mum", breed: "Ragdoll", colour: "Seal mitted", born: "2022", about: "Calm and gentle.", healthNotes: "", photo: "" }, { auth: true });
+  const dad = await call("POST", "/api/admin/parents", { name: "Atlas", role: "dad", breed: "Ragdoll", colour: "Seal point", born: "2021", about: "", healthNotes: "", photo: "" }, { auth: true });
+  assert.equal(mum.status, 200); assert.equal(dad.status, 200);
+  assert.equal((await call("POST", "/api/admin/parents", { name: "", role: "aunt" }, { auth: true })).status, 422);
+  await call("POST", "/api/admin/litters", { mum: mum.body.record.id, dad: dad.body.record.id, status: "expected", when: "March 2027", details: "Seal and blue", published: true }, { auth: true });
+  await call("POST", "/api/admin/litters", { mum: mum.body.record.id, dad: dad.body.record.id, status: "planned", when: "Autumn 2027", details: "", published: false }, { auth: true });
+  const site = (await call("GET", "/api/public/site")).body;
+  assert.equal(site.parents.length, 2);
+  assert.equal(site.litters.length, 1, "draft litters stay private");
+  assert.equal(site.litters[0].when, "March 2027");
+  const p = await call("PUT", `/api/admin/animals/${animal.id}`, validAnimal({ mum: mum.body.record.id, dad: dad.body.record.id, reservationFee: 50, photos: animal.photos }), { auth: true });
+  assert.equal(p.body.animal.reservationFee, 50);
+  const pub = (await call("GET", "/api/public/site")).body.animals[0];
+  assert.equal(pub.mum, mum.body.record.id); assert.equal(pub.reservationFee, 50);
+  assert.equal((await call("GET", "/api/admin/parents")).status, 403, "parents admin is private");
+  await call("DELETE", `/api/admin/parents/${dad.body.record.id}`, undefined, { auth: true });
+  assert.equal((await call("GET", "/api/public/site")).body.parents.length, 1);
 });
 
 test("public forms are rate limited per network", async () => {

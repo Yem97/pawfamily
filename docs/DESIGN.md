@@ -1,6 +1,8 @@
 # Pawfamily: system design
 
-Pawfamily is a pet rescue and rehoming service. Animals are rescued (and some raised), then adopted by approved families for an adoption fee. The brand covers any species. It currently focuses on cats.
+Pawfamily is a home breeder. Kittens are raised, litter-trained and socialised at home. A buyer enquires, chats with the breeder, then either reserves a kitten (refundable reservation fee) or buys an available one (kitten fee plus delivery). A deposit or full payment is due before delivery. The breeder delivers each kitten personally with the ownership documents and records. The brand name works for other species later.
+
+The site stays neutral on viewings and video calls: it neither promises nor rules them out.
 
 Domain (planned): `pawfamilyfreehome.com`. Hosting: Netlify.
 
@@ -13,14 +15,15 @@ Domain (planned): `pawfamilyfreehome.com`. Hosting: Netlify.
 |---|---|
 | P1 | The site shall list every animal whose status is *available* or *reserved*, with photo, name, species, sex, age group and status. |
 | P2 | When a visitor filters by species, sex or age group, the site shall show only matching animals and the match count. |
-| P3 | The site shall give each animal its own shareable page (`/adopt/<slug>`) with photos, story, health checklist, temperament, and adoption fee. |
-| P4 | The site shall show the adoption fee and what it includes wherever an animal is shown, so no visitor mistakes adoption for a free giveaway. |
-| P5 | When a visitor submits an adoption application with valid details and consent, the system shall store it, notify the owner by email (if configured) and confirm on screen. |
+| P3 | The site shall give each animal its own shareable page (`/adopt/<slug>`) with photos, story, parents, health checklist, temperament, kitten fee, reservation fee and ready date. |
+| P4 | The site shall show the kitten fee and what it includes wherever a kitten is shown, and the reservation fee with "refundable if we can't deliver", so no visitor mistakes it for a free giveaway. |
+| P5 | When a visitor submits an enquiry (reserve or buy, kitten, male or female, experience, children and ages, other pets, delivery area, contact details, consent), the system shall store it, notify the owner by email (if configured) and confirm on screen. |
 | P6 | When a visitor submits the contact form with valid details, the system shall store it and notify the owner by email (if configured). |
 | P7 | If a form field is invalid, the site shall show a specific message next to that field and shall not submit. |
-| P8 | The site shall show "Happy tails" (adoption stories) only when at least one story is published. |
+| P8 | The site shall show "Happy tails" (buyers' stories) only when at least one story is published. |
 | P9 | The site shall work on phones from 360 px wide with no horizontal scrolling. |
-| P10 | The site shall show trust information: meet-before-you-pay, vet checks, home checks, and charity number (if set). |
+| P10 | The site shall show trust information: vet and vaccination records, contract and receipts, refundable reservation, personal delivery by the breeder, and the licence number (if set). |
+| P12 | The site shall show the parents (`/parents`) and published upcoming litters (`/litters`); "Reserve from this litter" shall open the enquiry form set to *reserve* with the litter named. |
 | P11 | The site shall publish a privacy notice explaining what personal data is collected and why. |
 
 ### Owner dashboard (`/admin`)
@@ -28,25 +31,26 @@ Domain (planned): `pawfamilyfreehome.com`. Hosting: Netlify.
 |---|---|
 | A1 | The dashboard shall be accessible only after signing in with the owner email and password configured in Netlify. |
 | A2 | If 5 failed sign-ins occur from one network within 15 minutes, the system shall refuse further attempts for 15 minutes. |
-| A3 | The owner shall be able to add, edit, hide and delete animals, including up to 8 photos each. |
+| A3 | The owner shall be able to add, edit, hide and delete kittens, including up to 8 photos, mum, dad, kitten fee and reservation fee. |
 | A4 | When the owner changes an animal's status, the public site shall reflect it on the next page load. |
-| A5 | The owner shall see adoption applications and move each through: New → Reviewing → Home check → Approved → Adopted / Declined, with private notes. |
+| A5 | The owner shall see enquiries with the buyer's answers and move each through: New → Chatting → Reserved → Paid in full → Delivered / Declined, recording agreed fee, deposit and date, paid-in-full date, delivery date, documents handed over (contract, vaccination record, microchip, registration, vet health check) and private notes. The balance is shown automatically. |
 | A6 | The owner shall see contact messages and mark them replied. |
-| A7 | The owner shall create, edit and publish adoption stories. |
-| A8 | The owner shall edit site settings (name, tagline, contact details, social links, default fee, what the fee includes, charity number, announcement bar, about text, donate link). |
+| A7 | The owner shall create, edit and publish happy tails, and approve ones sent by buyers. |
+| A11 | The owner shall add, edit and delete parents (name, mum or dad, breed, colour, born, about, health notes, photo) and litters (mum, dad, status, expected date, details, published). |
+| A8 | The owner shall edit site settings (business name, tagline, licence number, contact details, social links, default kitten fee, what it includes, default reservation fee, go-home age 8–20 weeks, payment info, delivery info, announcement bar, about text). |
 | A9 | The owner shall download a full backup (JSON) of all data. |
 | A10 | Sessions shall expire after 8 hours, and the owner can sign out at any time. |
 
 ### Added features
 | ID | Requirement |
 |---|---|
-| F1 | Pet pages (`/adopt/<slug>`) shall be served with that pet's title, description, photo and canonical URL in the HTML head, so Facebook, WhatsApp and Google show a proper preview. |
+| F1 | Kitten pages (`/adopt/<slug>`) shall be served with that kitten's title, description, photo and canonical URL in the HTML head, so Facebook, WhatsApp and Google show a proper preview. |
 | F2 | Visitors shall be able to send a happy tail (story, pet's name, optional photo). It shall not appear publicly until the owner approves it. |
-| F3 | Visitors shall be able to join a waiting list with their wishes (type, sex, age). When a matching pet becomes Available, each matching person shall be emailed once, with a one-click unsubscribe that deletes their details. |
+| F3 | Visitors shall be able to join a waiting list with their wishes (type, sex, age). When a matching kitten becomes Available, each matching person shall be emailed once, with a one-click unsubscribe that deletes their details. |
 | F4 | The system shall count page and pet views anonymously (no cookies, no IP addresses, no identifiers), skip bots and visitors sending Do Not Track or Global Privacy Control, and show 30-day totals to the owner. |
 | F5 | `/sitemap.xml` shall list all public pages and listed pets, and `/robots.txt` shall point to it and exclude `/admin/` and `/api/`. |
 | F6 | A full backup shall be saved automatically every month, with the last 12 kept and downloadable from the dashboard. |
-| F7 | A Donate page shall link to the owner's external donation provider. No payment data is handled by this site. |
+| F7 | No card or bank payments are taken on this site. Payments are arranged directly with the breeder and only recorded in the dashboard. |
 
 ---
 
@@ -61,7 +65,7 @@ Browser ──► Netlify CDN ──► site/            static HTML, CSS, JS (E
                                     └── Resend API  (optional email alerts)
 ```
 
-**Why Netlify Blobs rather than Supabase (for now):** one platform, no extra account, free, and fully testable before launch. Every record is stored under its own key (`animals/<id>`, `applications/<id>`), so two writes never overwrite each other's data. The JSON export (A9) makes moving to Postgres or Supabase later straightforward.
+**Why Netlify Blobs rather than Supabase (for now):** one platform, no extra account, free, and fully testable before launch. Every record is stored under its own key (`animals/<id>`, `applications/<id>`, `parents/<id>`, `litters/<id>`), so two writes never overwrite each other's data. The JSON export (A9) makes moving to Postgres or Supabase later straightforward.
 
 **Local development:** `npm run dev` runs `scripts/dev-server.mjs`, which serves `site/` and runs the same API handler with a filesystem store in `.data/`. The API code is identical in both places. Only the storage adapter differs (`lib/store.mjs`).
 
@@ -74,8 +78,8 @@ All responses are JSON: `{ ok: true, ... }` or `{ ok: false, error: "message", f
 ### Public
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/public/site` | Public settings, listed animals, published stories |
-| POST | `/api/public/applications` | Adoption application (rate limited, honeypot) |
+| GET | `/api/public/site` | Public settings, listed kittens, published stories, parents, published litters |
+| POST | `/api/public/applications` | Kitten enquiry (rate limited, honeypot) |
 | POST | `/api/public/messages` | Contact message (rate limited, honeypot) |
 | GET | `/api/images/<id>` | A photo (immutable, cached for 1 year) |
 | GET | `/api/images/<id>/thumb` | ~600 px version for cards (falls back to the full photo) |
@@ -84,7 +88,7 @@ All responses are JSON: `{ ok: true, ... }` or `{ ok: false, error: "message", f
 | POST | `/api/public/stories` | Send a happy tail, held for approval (3 per hour per network) |
 | POST | `/api/public/hit` | Anonymous page-view count (bots ignored) |
 
-Other functions: `share.mjs` serves `/adopt/<slug>` with per-pet preview tags; `seo.mjs` serves `/sitemap.xml` and `/robots.txt`; `backup.mjs` is a monthly scheduled function.
+Other functions: `share.mjs` serves `/adopt/<slug>` with per-kitten preview tags; `seo.mjs` serves `/sitemap.xml` and `/robots.txt`; `backup.mjs` is a monthly scheduled function.
 
 ### Auth
 | Method | Path | Purpose |
@@ -101,8 +105,12 @@ Other functions: `share.mjs` serves `/adopt/<slug>` with per-pet preview tags; `
 | PUT, DELETE | `/api/admin/animals/<id>` | Update / delete (deletes photos too) |
 | POST | `/api/admin/images` | Upload a photo (data URL, ≤ 3 MB, JPEG/PNG/WebP checked by file signature) |
 | DELETE | `/api/admin/images/<id>` | Delete a photo |
-| GET | `/api/admin/applications` | List |
-| PUT, DELETE | `/api/admin/applications/<id>` | Update status and notes / delete |
+| GET | `/api/admin/applications` | List enquiries |
+| PUT, DELETE | `/api/admin/applications/<id>` | Update stage, payments, delivery date, documents and notes / delete |
+| GET, POST | `/api/admin/parents` | List / create |
+| PUT, DELETE | `/api/admin/parents/<id>` | Update / delete (deletes photo too) |
+| GET, POST | `/api/admin/litters` | List / create |
+| PUT, DELETE | `/api/admin/litters/<id>` | Update / delete |
 | GET | `/api/admin/messages` | List |
 | PUT, DELETE | `/api/admin/messages/<id>` | Mark replied / delete |
 | GET, POST | `/api/admin/stories` | List / create |
@@ -110,7 +118,7 @@ Other functions: `share.mjs` serves `/adopt/<slug>` with per-pet preview tags; `
 | GET, PUT | `/api/admin/settings` | Read / save settings |
 | GET | `/api/admin/export` | Full JSON backup |
 | GET, DELETE | `/api/admin/waitlist[/<id>]` | Waiting list (tokens never returned) / remove |
-| GET | `/api/admin/stats?days=30` | Visit counts, top pages and pets |
+| GET | `/api/admin/stats?days=30` | Visit counts, top pages and kittens |
 | GET, POST | `/api/admin/backups[/<date>]` | List, save now, download a monthly backup |
 | GET, PUT | `/api/admin/security` | Change sign-in email and password |
 
@@ -126,10 +134,10 @@ Other functions: `share.mjs` serves `/adopt/<slug>` with per-pet preview tags; `
 | XSS | All user content is rendered with `textContent` or escaped. A strict Content-Security-Policy with no inline scripts or styles, and `frame-ancestors 'none'` |
 | Malicious uploads | Admin-only, size cap, file-signature check (JPEG/PNG/WebP only), served with `nosniff` and the stored type |
 | Spam on public forms | Hidden honeypot field, 5 submissions per hour per network, server-side validation with length limits |
-| Data exposure | The public endpoint returns only listed animals and public settings. Applications and messages are admin-only. IPs are stored only as salted hashes for rate limiting |
+| Data exposure | The public endpoint returns only listed kittens, parents, published litters and public settings. Enquiries, payment records and messages are admin-only. IPs are stored only as salted hashes for rate limiting |
 | Secrets | Read from Netlify environment variables only. `.env` is git-ignored |
 | Public photo uploads (happy tails) | Rate limited, size cap, file-signature check, never public until the owner approves |
-| Email abuse via the waiting list | Rate limited, consent required, one email per pet per person, unsubscribe token checked; alerts only go out when the owner lists a pet |
+| Email abuse via the waiting list | Rate limited, consent required, one email per pet per person, unsubscribe token checked; alerts only go out when the owner lists a kitten |
 | Tracking | Visit counts store only page path and date totals: no cookies, IPs or identifiers. DNT/GPC respected |
 | Misconfiguration | If admin env vars are missing, sign-in is refused with a clear "not configured" error (fails closed) |
 
@@ -141,9 +149,10 @@ Other functions: `share.mjs` serves `/adopt/<slug>` with per-pet preview tags; `
 |---|---|
 | Owner can't sign in because env vars were mistyped | `npm run hash-password` prints exact values to paste. Sign-in shows "not configured" vs "wrong password" distinctly, without revealing which field was wrong |
 | Phone photos too big and uploads fail | Photos are resized in the browser to 1600 px JPEG (~300 KB) before upload |
-| Site looks empty on launch day | Designed empty states ("New arrivals coming soon"), and the owner adds animals from the dashboard in minutes |
-| Visitors think "freehome" means free pets | Fee shown on every card and profile, in the FAQ and the application form (P4) |
+| Site looks empty on launch day | Designed empty states, and the owner adds kittens from the dashboard in minutes |
+| Visitors think "freehome" means free kittens | Kitten fee shown on every card and profile, in the FAQ and the enquiry form (P4) |
 | Emails never arrive | Email is optional. Everything also lands in the dashboard. Resend's test sender delivers to the account owner's own address |
 | Spam floods the inbox | Honeypot plus rate limit. The owner can delete in bulk later if needed |
 | Lost data | Blobs storage is durable. A9 backup export, recommended monthly |
-| Scam association with "free home" | Trust block on every page: meet before paying, vet records, home checks, written adoption agreement |
+| Scam association with "free home" or deposits | Trust strip on every page (vet records, contract and receipts, refundable reservation, delivered by the breeder), licence number in the footer, written receipt for every payment. No claims the business can't keep |
+| Breeder licensing | SETUP.md explains the council licence and microchip rules; the licence number setting shows it publicly |

@@ -40,17 +40,21 @@ const step = (name) => console.log("✓", name);
 
 // 1. Empty public site
 await page.goto(BASE + "/"); await page.waitForSelector(".hero h1");
-assert.match(await page.textContent(".hero h1"), /Every rescue deserves/);
-assert.ok(await page.isVisible("text=New friends coming soon"));
+assert.match(await page.textContent(".hero h1"), /Home-raised kittens/);
+assert.ok(await page.isVisible("text=New kittens coming soon"));
 await page.screenshot({ path: path.join(SHOTS, "01-home-empty.png") });
 step("empty home page renders with designed empty state");
 
 // 2. Every public route renders
-for (const [p, h] of [["/adopt", "Meet our pets"], ["/how-to-adopt", "How to adopt"], ["/about", "About Pawfamily"], ["/help", "Ways to help"], ["/faq", "Frequently asked"], ["/contact", "Contact us"], ["/privacy", "Privacy notice"], ["/nope", "Sorry"]]) {
+const RETIRED = /meet before you pay|never ask (you )?(for|to) pay|rescue|foster|donat|home check/i; // claims and wording that no longer apply
+for (const [p, h] of [["/", "Home-raised"], ["/adopt", "Our kittens"], ["/how-to-adopt", "How it works"], ["/parents", "Our cats"], ["/litters", "Upcoming litters"], ["/about", "About Pawfamily"], ["/happy-tails", "Happy tails"], ["/faq", "Frequently asked"], ["/contact", "Contact us"], ["/privacy", "Privacy notice"], ["/nope", "Sorry"]]) {
   await page.goto(BASE + p); await page.waitForSelector("main h1");
   assert.match(await page.textContent("main h1"), new RegExp(h), p);
+  const text = await page.textContent("body");
+  assert.ok(!RETIRED.test(text), `old rescue wording or retired promise on ${p}: ${text.match(RETIRED)?.[0]}`);
+  assert.ok(!/video call|visit (us|the kitten)|meet (the|your) kitten in person/i.test(text), `site stays neutral about meeting (${p})`);
 }
-step("all 9 public pages + not-found render");
+step("all 10 public pages + not-found render; no rescue wording or retired promises; neutral about meeting");
 
 // 3. Admin login: wrong then right
 const admin = await ctx.newPage(); watch(admin);
@@ -65,7 +69,7 @@ await admin.waitForSelector(".a-head h1"); step("admin sign-in rejects wrong pas
 // 4. Settings
 await admin.goto(BASE + "/admin/#settings"); await admin.waitForSelector("#settings");
 await admin.fill("#settings-town", "Leeds"); await admin.fill("#settings-region", "West Yorkshire");
-await admin.fill("#settings-email", "hello@pawfamilyfreehome.com"); await admin.fill("#settings-defaultFee", "150");
+await admin.fill("#settings-email", "hello@pawfamilyfreehome.com"); await admin.fill("#settings-defaultFee", "150"); await admin.fill("#settings-defaultReservationFee", "50");
 await admin.fill("#settings-announcement", "Kitten season: new arrivals every week");
 await admin.fill("#settings-facebookUrl", "javascript:alert(1)"); await admin.click("#settings button[type=submit]");
 await admin.waitForSelector("#err-settings-facebookUrl:not(:empty)"); step("settings reject unsafe links");
@@ -77,7 +81,20 @@ const jpeg = await admin.evaluate(() => { const c = document.createElement("canv
   const grd = g.createLinearGradient(0, 0, 900, 1100); grd.addColorStop(0, "#f3e6d3"); grd.addColorStop(1, "#7b5236"); g.fillStyle = grd; g.fillRect(0, 0, 900, 1100);
   g.fillStyle = "#fff"; g.beginPath(); g.arc(450, 520, 240, 0, 7); g.fill(); return c.toDataURL("image/jpeg", .9).split(",")[1]; });
 const photoPath = path.join(env.PAWFAMILY_DATA_DIR, "bluebell.jpg"); writeFileSync(photoPath, Buffer.from(jpeg, "base64"));
-await admin.goto(BASE + "/admin/#pets"); await admin.waitForSelector("text=No pets yet");
+// Parents (with photos) and a litter
+for (const [name, role] of [["Clover", "mum"], ["Atlas", "dad"]]) {
+  await admin.goto(BASE + "/admin/#parents"); await admin.waitForSelector(".a-head [data-edit-parent]");
+  await admin.click(".a-head [data-edit-parent]"); await admin.waitForSelector("#parent");
+  await admin.fill("#parent-name", name); await admin.selectOption("#parent-role", role); await admin.fill("#parent-breed", "Ragdoll");
+  await admin.setInputFiles("#parentFile", photoPath); await admin.waitForSelector("#parentPic img");
+  await admin.click("button[form=parent]"); await admin.waitForSelector(`.list b.t:text-is("${name}")`);
+}
+await admin.goto(BASE + "/admin/#litters"); await admin.click(".a-head [data-edit-litter]"); await admin.waitForSelector("#litter");
+await admin.selectOption("#litter-mum", { label: "Clover" }); await admin.selectOption("#litter-dad", { label: "Atlas" }); await admin.fill("#litter-when", "March 2027");
+await admin.click("button[form=litter]"); await admin.waitForSelector("text=Clover × Atlas");
+step("owner adds parents with photos and a published litter");
+
+await admin.goto(BASE + "/admin/#pets"); await admin.waitForSelector("text=No kittens yet");
 await admin.click(".a-head [data-new-pet]"); await admin.waitForSelector("#pet");
 await admin.click("#pet button[type=submit], button[form=pet]"); await admin.waitForSelector("#err-pet-name:not(:empty)"); step("pet editor requires a name");
 await admin.setInputFiles("#petFiles", [photoPath, photoPath]); await admin.waitForFunction(() => document.querySelectorAll("#photoGrid img").length === 2);
@@ -85,6 +102,7 @@ await admin.click("[data-photo-remove='1']"); await admin.waitForFunction(() => 
 await admin.fill("#pet-name", "Bluebell"); await admin.selectOption("#pet-ageGroup", "baby"); await admin.fill("#pet-breed", "Ragdoll");
 await admin.fill("#pet-summary", "A gentle, floppy kitten who loves a lap."); await admin.fill("#pet-story", "Bluebell was found in a garden shed.\n\nNow she's healthy and ready for her family.");
 await admin.check("input[name=traits][value=lap-cat]"); await admin.check("input[name=health][value=vaccinated]"); await admin.check("input[name=featured]");
+await admin.selectOption("#pet-mum", { label: "Clover" }); await admin.selectOption("#pet-dad", { label: "Atlas" });
 await admin.screenshot({ path: path.join(SHOTS, "03-pet-editor.png") });
 await admin.click("button[form=pet]"); await admin.waitForSelector("text=Bluebell");
 await admin.waitForSelector(".list img"); step("pet created with photo upload (resize → upload → save)");
@@ -107,25 +125,30 @@ await page.screenshot({ path: path.join(SHOTS, "05-adopt.png") });
 await page.click(".card:has-text('Bluebell')"); await page.waitForSelector(".profile h1");
 assert.equal(await page.textContent(".profile h1"), "Bluebell");
 assert.match(await page.textContent(".fee-box"), /£150/);
+assert.match(await page.textContent(".fee-box"), /Reservation fee £50, refundable if we can't deliver Bluebell/);
+assert.ok(await page.isVisible('.parents-mini a:has-text("Clover")') && await page.isVisible('.parents-mini a:has-text("Atlas")'), "parents shown on the kitten page");
 assert.match(page.url(), /\/adopt\/bluebell-[a-f0-9]{5}$/);
 await page.screenshot({ path: path.join(SHOTS, "06-profile.png"), fullPage: true });
 step("public listing, filters, profile, fee and XSS-safe rendering");
 
-// 7. Apply to adopt from the profile
-await page.click("text=Apply to adopt Bluebell"); await page.waitForSelector("#application");
+// 7. Enquiry from the kitten page: her questions
+await page.click("text=Enquire about Bluebell"); await page.waitForSelector("#application");
 assert.equal(await page.$eval("#application-animalId", el => el.selectedOptions[0].textContent.startsWith("Bluebell")), true);
-await page.click("#application button[type=submit]"); await page.waitForSelector("#err-application-name:not(:empty)");
-assert.ok(await page.isVisible("#err-application-consent:not(:empty)"));
-await page.fill("#application-name", "Sam Lee"); await page.fill("#application-email", "sam@example.com"); await page.fill("#application-postcode", "LS1 4AP");
-await page.fill("#application-household", "Two adults"); await page.fill("#application-message", "We work from home and would adore Bluebell.");
+await page.click("#application button[type=submit]"); await page.waitForSelector("#err-application-intent:not(:empty)");
+for (const f of ["name", "deliveryArea", "experience", "children", "consent"]) assert.ok(await page.isVisible(`#err-application-${f}:not(:empty)`), `error shown for ${f}`);
+await page.click('label.radio-chip:has(input[name=intent][value=reserve])'); await page.click('label.radio-chip:has(input[name=sexPreference][value=female])');
+await page.fill("#application-name", "Sam Lee"); await page.fill("#application-email", "sam@example.com"); await page.fill("#application-deliveryArea", "LS1 4AP");
+await page.click('label.radio-chip:has(input[name=experience][value=yes])'); await page.click('label.radio-chip:has(input[name=children][value=yes])');
 await page.check("#application-consent"); await page.click("#application button[type=submit]");
+await page.waitForSelector("#err-application-childrenAges:not(:empty)");
+await page.fill("#application-childrenAges", "6 and 9"); await page.click("#application button[type=submit]");
 await page.waitForSelector("#applyDone"); assert.match(await page.textContent("#applyDone"), /Thank you, Sam/);
-step("adoption application: validation then successful submit");
+step("enquiry: her questions (reserve/buy, male/female, experience, children + ages), validation, sent");
 
 // 8. Contact form
-await page.goto(BASE + "/contact?topic=fostering"); await page.waitForSelector("#contact");
-assert.equal(await page.inputValue("#contact-topic"), "fostering");
-await page.fill("#contact-name", "Ava"); await page.fill("#contact-email", "ava@example.com"); await page.fill("#contact-message", "I'd love to foster kittens this spring.");
+await page.goto(BASE + "/contact?topic=delivery"); await page.waitForSelector("#contact");
+assert.equal(await page.inputValue("#contact-topic"), "delivery");
+await page.fill("#contact-name", "Ava"); await page.fill("#contact-email", "ava@example.com"); await page.fill("#contact-message", "Do you deliver to York?");
 await page.click("#contact button[type=submit]"); await page.waitForSelector("#contactDone"); step("contact form submits with topic preselected");
 
 // 9. Admin sees and processes them
@@ -134,11 +157,17 @@ assert.match(await admin.textContent(".stat.hl"), /^1/);
 await admin.screenshot({ path: path.join(SHOTS, "07-admin-overview.png") });
 await admin.goto(BASE + "/admin/#applications"); await admin.waitForSelector("[data-app-status]");
 const appId = await admin.getAttribute("[data-app-status]", "data-app-status");
-await admin.selectOption(`[data-app-status="${appId}"]`, "home-check"); await admin.fill(`[data-notes="${appId}"]`, "Home visit booked Tuesday 2pm");
-await admin.click(`[data-app-save="${appId}"]`); await admin.waitForSelector(".pill.home-check");
+const today = new Date().toISOString().slice(0, 10);
+await admin.selectOption(`[data-app-status="${appId}"]`, "reserved"); await admin.fill(`[data-notes="${appId}"]`, "Called Tuesday, wants Bluebell");
+await admin.fill(`#agreedFee-${appId}`, "150"); await admin.fill(`#depositAmount-${appId}`, "50"); await admin.fill(`#depositDate-${appId}`, today); await admin.fill(`#deliveryDate-${appId}`, "2027-01-15");
+await admin.check(`[data-enquiry="${appId}"] [data-doc="contract"]`); await admin.check(`[data-enquiry="${appId}"] [data-doc="vaccination-record"]`);
+await admin.click(`[data-app-save="${appId}"]`); await admin.waitForSelector(".pill.reserved");
+assert.match(await admin.textContent(`[data-enquiry="${appId}"]`), /balance £100/);
+assert.equal(await admin.isChecked(`[data-enquiry="${appId}"] [data-doc="contract"]`), true, "documents checklist saved");
+assert.equal(await admin.inputValue(`#deliveryDate-${appId}`), "2027-01-15");
 await admin.screenshot({ path: path.join(SHOTS, "08-admin-applications.png") });
 await admin.goto(BASE + "/admin/#messages"); await admin.waitForSelector("[data-msg-toggle]"); await admin.click("[data-msg-toggle]"); await admin.waitForSelector(".pill.replied");
-step("owner sees counts, moves application to home check with notes, marks message replied");
+step("owner sees counts, reserves the enquiry with deposit, balance, delivery date and documents; marks message replied");
 
 // 10. Status change hides pet; story publishes and nav link appears
 await admin.goto(BASE + "/admin/#pets"); await admin.waitForSelector("[data-pet-status]");
@@ -170,20 +199,21 @@ await admin.waitForSelector(".stats"); assert.ok(!(await admin.isVisible("text=s
 step("owner sets own email + password; temporary details stop working; reminder disappears");
 
 // 10c. New features as a visitor and as the owner
-// Donation link + Donate page
-await admin.goto(BASE + "/admin/#settings"); await admin.waitForSelector("#settings");
-await admin.fill("#settings-donateUrl", "https://www.paypal.com/donate/?hosted_button_id=EXAMPLE"); await admin.click("#settings button[type=submit]"); await admin.waitForSelector("#toast.show");
-await page.goto(BASE + "/donate"); await page.waitForSelector("main h1");
-assert.equal(await page.getAttribute(".panel-card a.btn", "href"), "https://www.paypal.com/donate/?hosted_button_id=EXAMPLE");
-assert.equal(await page.getAttribute(".panel-card a.btn", "rel"), "noopener noreferrer");
-assert.ok(await page.isVisible('footer a[href="/donate"]'));
-await page.screenshot({ path: path.join(SHOTS, "14-donate.png") });
-step("donate page links to the owner's donation page (opens safely in a new tab)");
+// Parents and litters pages; reserving from a litter
+await page.goto(BASE + "/parents"); await page.waitForSelector(".cat h3");
+assert.equal(await page.locator(".cat h3").count(), 2);
+await page.goto(BASE + "/litters"); await page.waitForSelector(".litter h3");
+assert.match(await page.textContent(".litter h3"), /Clover × Atlas/);
+await page.screenshot({ path: path.join(SHOTS, "14-litters.png") });
+await page.click("text=Reserve from this litter"); await page.waitForSelector("#application");
+assert.equal(await page.isChecked("input[name=intent][value=reserve]"), true, "reserve preselected");
+assert.match(await page.inputValue("#application-message"), /Clover × Atlas \(March 2027\)/);
+step("parents and litters pages; 'Reserve from this litter' preselects reserve and names the litter");
 
 // Waiting list
 await page.goto(BASE + "/adopt#alerts"); await page.waitForSelector("#alertsForm");
 await page.click("#alertsForm button[type=submit]"); await page.waitForSelector("#err-alertsForm-name:not(:empty)");
-await page.fill("#alertsForm-name", "Leo"); await page.fill("#alertsForm-email", "leo@example.com"); await page.selectOption("#alertsForm-species", "cat");
+await page.fill("#alertsForm-name", "Leo"); await page.fill("#alertsForm-email", "leo@example.com"); await page.selectOption("#alertsForm-sex", "female");
 await page.check("#alertsForm-consent"); await page.click("#alertsForm button[type=submit]"); await page.waitForSelector("#alertsDone");
 await admin.goto(BASE + "/admin/#waitlist"); await admin.waitForSelector("text=Leo");
 assert.ok(await admin.isVisible("text=Alerts are switched off"), "owner told alerts need email set up");
@@ -244,7 +274,7 @@ assert.equal(after, 401); step("backup downloads; sign-out ends the session");
 // 12. Phone layout: four common phone sizes, no sideways scrolling anywhere
 await page.goto(BASE + "/adopt"); await page.waitForSelector(".card");
 const slug = await page.evaluate(async () => (await (await fetch("/api/public/site")).json()).animals[0].slug);
-const PUBLIC = ["/", "/adopt", "/adopt/" + slug, "/how-to-adopt", "/about", "/help", "/faq", "/contact", "/privacy", "/happy-tails"];
+const PUBLIC = ["/", "/adopt", "/adopt/" + slug, "/how-to-adopt", "/parents", "/litters", "/about", "/faq", "/contact", "/privacy", "/happy-tails"];
 for (const [w, h, label] of [[360, 740, "small Android"], [375, 667, "iPhone SE"], [393, 852, "iPhone 15"], [412, 915, "Pixel"]]) {
   const c = await browser.newContext({ viewport: { width: w, height: h }, isMobile: true, hasTouch: true });
   const pg = await c.newPage(); watch(pg);
@@ -256,7 +286,7 @@ for (const [w, h, label] of [[360, 740, "small Android"], [375, 667, "iPhone SE"
   assert.equal(await pg.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `horizontal scroll on admin (${label})`);
   await c.close();
 }
-step("phone: no horizontal scrolling on 11 pages at 4 phone sizes (360–412 px)");
+step("phone: no horizontal scrolling on 12 pages at 4 phone sizes (360–412 px)");
 
 // 13. Phone design: pets first, swipeable cards, tab bar, dismissible announcement
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
@@ -289,24 +319,26 @@ assert.ok(await m.isVisible(".fact-chips") && !(await m.isVisible(".facts")), "f
 await m.screenshot({ path: path.join(SHOTS, "11-phone-profile.png") });
 await m.click("[data-back]"); await m.waitForSelector("#petGrid"); assert.match(m.url(), /\/adopt$/);
 await m.click(".card"); await m.waitForSelector(".sticky-apply");
-step("phone profile: swipe gallery, fact chips, sticky £150 Apply bar, back button");
+step("phone kitten page: swipe gallery, fact chips, sticky £150 Enquire bar, back button");
 
-// 16. Phone application: 3 short steps
+// 16. Phone enquiry: 3 short steps
 await m.click(".sticky-apply .btn"); await m.waitForSelector("#application.wizard");
 assert.ok(await m.isVisible('fieldset[data-step="1"]') && !(await m.isVisible('fieldset[data-step="2"]')), "only step 1 shown");
 assert.ok(!(await m.isVisible("#application button[type=submit]")), "send button waits for the last step");
-await m.click(".wizard-nav .next"); await m.waitForSelector("#err-application-name:not(:empty)");
-assert.ok(!(await m.isVisible("#err-application-household:not(:empty)")), "only this step's fields are checked");
-await m.fill("#application-name", "Mia Patel"); await m.fill("#application-email", "mia@example.com"); await m.fill("#application-postcode", "LS6 2AB");
+await m.click(".wizard-nav .next"); await m.waitForSelector("#err-application-intent:not(:empty)");
+assert.ok(!(await m.isVisible("#err-application-name:not(:empty)")), "only this step's fields are checked");
+await m.click('label.radio-chip:has(input[name=intent][value=buy])');
 await m.screenshot({ path: path.join(SHOTS, "12-phone-apply-step1.png") });
 await m.click(".wizard-nav .next"); await m.waitForSelector('fieldset[data-step="2"].on');
-await m.fill("#application-household", "Me and my partner"); await m.click(".wizard-nav .next"); await m.waitForSelector('fieldset[data-step="3"].on');
-await m.click(".wizard-nav .prev"); await m.waitForSelector('fieldset[data-step="2"].on');
-assert.equal(await m.inputValue("#application-household"), "Me and my partner", "answers kept when going back");
+await m.fill("#application-name", "Mia Patel"); await m.fill("#application-email", "mia@example.com"); await m.fill("#application-deliveryArea", "LS6 2AB");
+await m.click('label.radio-chip:has(input[name=experience][value=no])'); await m.click('label.radio-chip:has(input[name=children][value=no])');
 await m.click(".wizard-nav .next"); await m.waitForSelector('fieldset[data-step="3"].on');
-await m.fill("#application-message", "Quiet flat, I work from home, and I'd love a lap cat."); await m.check("#application-consent");
+await m.click(".wizard-nav .prev"); await m.waitForSelector('fieldset[data-step="2"].on');
+assert.equal(await m.inputValue("#application-name"), "Mia Patel", "answers kept when going back");
+await m.click(".wizard-nav .next"); await m.waitForSelector('fieldset[data-step="3"].on');
+await m.check("#application-consent");
 await m.click("#application button[type=submit]"); await m.waitForSelector("#applyDone");
-step("phone application: 3 steps, per-step checks, answers kept, sent");
+step("phone enquiry: 3 steps, per-step checks, answers kept, sent");
 
 // 17. Owner dashboard on a phone
 await m.goto(BASE + "/admin/"); await m.waitForSelector("#login");
@@ -316,12 +348,12 @@ assert.equal(await m.$eval(".a-nav", el => getComputedStyle(el).position), "fixe
 assert.ok(await m.isVisible(".fab"), "floating add button");
 await m.screenshot({ path: path.join(SHOTS, "13-phone-dashboard.png") });
 await m.click('.a-nav a[href="#more"]'); await m.waitForSelector(".more-links");
-assert.ok(await m.isVisible('.more-links a[href="#settings"]'));
+assert.ok(await m.isVisible('.more-links a[href="#settings"]') && await m.isVisible('.more-links a[href="#parents"]') && await m.isVisible('.more-links a[href="#litters"]'));
 await m.click('.a-nav a[href="#applications"]'); await m.waitForSelector("details.app-more");
 assert.equal(await m.$eval("details.app-more", d => d.open), false, "application details start collapsed on phones");
 await m.click('.a-nav a[href="#pets"]'); await m.waitForSelector(".fab"); await m.click(".fab"); await m.waitForSelector("#pet");
 await m.click("[data-close]");
-step("phone dashboard: bottom nav, More page, collapsed details, floating + Add pet");
+step("phone dashboard: bottom nav, More page, collapsed details, floating + Add kitten");
 
 await page.goto(BASE + "/"); await page.waitForSelector(".card"); await page.screenshot({ path: path.join(SHOTS, "11-home-full.png"), fullPage: true });
 

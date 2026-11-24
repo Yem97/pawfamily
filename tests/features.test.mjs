@@ -136,7 +136,7 @@ test("share previews: pet pages carry the pet's title, description, photo and ca
   assert.match(html, /<title>Bluebell &lt;b&gt; · Pawfamily<\/title>/, "title set and escaped");
   assert.match(html, new RegExp(`<meta property="og:image" content="${BASE}/api/images/${withPhoto.body.id}">`), "absolute photo URL");
   assert.match(html, /<meta property="og:title" content="Meet Bluebell &lt;b&gt;: female baby Ragdoll looking for a home">/);
-  assert.match(html, /Adoption fee £150/);
+  assert.match(html, /Kitten fee £150/);
   assert.match(html, new RegExp(`<link rel="canonical" href="${BASE}/adopt/${slug}">`));
   const missing = await (await share(new Request(`${BASE}/adopt/nobody-12345`), { params: { slug: "nobody-12345" } })).text();
   assert.match(missing, /<title>Pawfamily<\/title>/, "unknown pets get the normal page");

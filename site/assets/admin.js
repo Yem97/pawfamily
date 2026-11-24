@@ -17,7 +17,7 @@ async function guarded(fn) {
 function renderLogin(notice = "") {
   $("#topActions").innerHTML = `<a class="btn light sm" href="/">View website</a>`;
   $("#root").innerHTML = `<div class="login form-card"><div class="eyebrow">Owner login</div><h1>Welcome back</h1>
-    <p class="muted">Sign in to manage pets, applications and your website.</p>
+    <p class="muted">Sign in to manage kittens, enquiries and your website.</p>
     ${!me.configured ? `<div class="setup-note mt-m"><b>Sign-in isn't set up yet.</b> In Netlify, add <code>ADMIN_EMAIL</code>, <code>ADMIN_PASSWORD_HASH</code> and <code>SESSION_SECRET</code>, then redeploy. See <code>docs/SETUP.md</code>.</div>` : ""}
     ${notice ? `<div class="form-error mt-m" role="alert">${esc(notice)}</div>` : ""}
     <form class="stack mt-m" id="login" novalidate>
@@ -45,14 +45,16 @@ const ICO = {
   messages: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v12H5.2L4 17.2z"/></svg>',
   more: '<svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
 };
-const NAV = [["overview", "Overview"], ["pets", "Pets"], ["applications", "Applications"], ["messages", "Messages"], ["stories", "Happy tails", "desk"], ["waitlist", "Waiting list", "desk"], ["visitors", "Visitors", "desk"], ["settings", "Settings", "desk"], ["backup", "Backup", "desk"], ["more", "More", "phone"]];
-const MORE_VIEWS = ["stories", "waitlist", "visitors", "settings", "backup", "more"];
+const NAV = [["overview", "Overview"], ["pets", "Kittens"], ["applications", "Enquiries"], ["messages", "Messages"], ["parents", "Parents", "desk"], ["litters", "Litters", "desk"], ["stories", "Happy tails", "desk"], ["waitlist", "Waiting list", "desk"], ["visitors", "Visitors", "desk"], ["settings", "Settings", "desk"], ["backup", "Backup", "desk"], ["more", "More", "phone"]];
+const MORE_VIEWS = ["parents", "litters", "stories", "waitlist", "visitors", "settings", "backup", "more"];
+let parentsCache = null;
+const loadParents = async () => (parentsCache = (await A("/api/admin/parents")).parents);
 let counts = { applications: 0, messages: 0, stories: 0, more: 0 };
 let summary = null;
 function shell(view, html) {
   $("#topActions").innerHTML = `<a class="btn light sm" href="/" target="_blank" rel="noopener">View website ↗</a><button class="btn sm" type="button" id="logout">Sign out</button>`;
   const current = id => id === view || (id === "more" && MORE_VIEWS.includes(view));
-  const fab = view === "overview" || view === "pets" ? `<button class="btn fab" type="button" data-new-pet>+ Add pet</button>` : "";
+  const fab = view === "overview" || view === "pets" ? `<button class="btn fab" type="button" data-new-pet>+ Add kitten</button>` : "";
   $("#root").innerHTML = `<div class="admin"><nav class="a-nav" aria-label="Dashboard">${NAV.map(([id, l, only]) => `<a href="#${id}" class="${only === "desk" ? "a-desk-only" : only === "phone" ? "a-more-only" : ""}" ${current(id) ? 'aria-current="page"' : ""}>${ICO[id] || ""}<span>${l}</span>${counts[id] ? `<span class="badge" aria-label="${counts[id]} new">${counts[id]}</span>` : ""}</a>`).join("")}</nav>
     <section id="view" class="view-in">${html}</section></div>${fab}`;
 }
@@ -67,20 +69,20 @@ async function refreshCounts() {
 async function vOverview() {
   const s = await refreshCounts();
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
-  shell("overview", `<div class="a-head"><div><h1>${greeting}</h1><p>Here's what's happening at ${esc(settings.rescueName)}.</p></div><button class="btn sm" type="button" data-new-pet>+ Add a pet</button></div>
+  shell("overview", `<div class="a-head"><div><h1>${greeting}</h1><p>Here's what's happening at ${esc(settings.rescueName)}.</p></div><button class="btn sm" type="button" data-new-pet>+ Add a kitten</button></div>
     <div class="stats">
-      <a class="stat hl" href="#applications"><b>${s.applications.new}</b><span>New applications</span></a>
+      <a class="stat hl" href="#applications"><b>${s.applications.new}</b><span>New enquiries</span></a>
       <a class="stat" href="#messages"><b>${s.messages.new}</b><span>New messages</span></a>
-      <a class="stat" href="#pets"><b>${s.animals.available}</b><span>Pets available</span></a>
-      <a class="stat" href="#pets"><b>${s.animals.reserved}</b><span>Reserved</span></a></div>
+      <a class="stat" href="#pets"><b>${s.animals.available}</b><span>Kittens available</span></a>
+      <a class="stat" href="#applications"><b>${s.applications.reserved + s.applications.paid}</b><span>Reserved or paid, to deliver</span></a></div>
     ${me.source === "netlify" ? `<div class="setup-note"><b>You're signed in with the temporary password.</b> Set your own email and password in <a class="link" href="#settings">Settings → Security</a>. It takes a minute.</div><br>` : ""}
     ${s.stories.pending ? `<div class="setup-note"><b>${s.stories.pending} happy tail${s.stories.pending === 1 ? "" : "s"} waiting for your approval.</b> <a class="link" href="#stories">Review now</a></div><br>` : ""}
-    ${!s.email.owner ? `<div class="setup-note">Email alerts are off, so you won't be emailed about new applications. Check here regularly, or set up email (see docs/SETUP.md).</div><br>` : ""}
-    ${!settings.email || !settings.town ? `<div class="setup-note">Finish your setup: add your contact email and town in <a class="link" href="#settings">Settings</a> so adopters can find you.</div><br>` : ""}
-    <div class="box"><h2>Latest applications <a class="link" href="#applications">View all</a></h2>
+    ${!s.email.owner ? `<div class="setup-note">Email alerts are off, so you won't be emailed about new enquiries. Check here regularly, or set up email (see docs/SETUP.md).</div><br>` : ""}
+    ${!settings.email || !settings.town ? `<div class="setup-note">Finish your setup: add your contact email and town in <a class="link" href="#settings">Settings</a> so buyers can find you.</div><br>` : ""}
+    <div class="box"><h2>Latest enquiries <a class="link" href="#applications">View all</a></h2>
       ${s.recentApplications.length ? `<ul class="list">${s.recentApplications.map(a => `<li class="text"><div><b class="t">${esc(a.name)}</b> <span class="pill ${esc(a.status)}">${esc(LABELS.appStatus[a.status])}</span>
-        <div class="s">For ${esc(a.animalName)} · ${esc(fmtDateTime(a.createdAt))}</div></div><div class="ctrl"><a class="btn light sm" href="#applications">Open</a></div></li>`).join("")}</ul>`
-        : `<div class="pad muted">No applications yet. They'll appear here as soon as someone applies.</div>`}</div>
+        <div class="s">${esc(LABELS.intent[a.intent] || "Enquiry")} · ${esc(a.animalName)} · ${esc(fmtDateTime(a.createdAt))}</div></div><div class="ctrl"><a class="btn light sm" href="#applications">Open</a></div></li>`).join("")}</ul>`
+        : `<div class="pad muted">No enquiries yet. They'll appear here as soon as someone sends one.</div>`}</div>
     <div class="box"><h2>Latest messages <a class="link" href="#messages">View all</a></h2>
       ${s.recentMessages.length ? `<ul class="list">${s.recentMessages.map(m => `<li class="text"><div><b class="t">${esc(m.name)}</b> <span class="pill ${esc(m.status)}">${m.status === "new" ? "New" : "Replied"}</span>
         <div class="s">${esc(LABELS.topic[m.topic] || m.topic)} · ${esc(fmtDateTime(m.createdAt))}</div></div><div class="ctrl"><a class="btn light sm" href="#messages">Open</a></div></li>`).join("")}</ul>`
@@ -90,13 +92,13 @@ async function vOverview() {
 /* ---------------- pets ---------------- */
 let pets = [];
 const petPayload = a => ({ name: a.name, species: a.species, breed: a.breed || "", sex: a.sex, ageGroup: a.ageGroup, birthDate: a.birthDate || "", status: a.status,
-  fee: a.fee ?? "", summary: a.summary || "", story: a.story || "", photos: a.photos || [], traits: a.traits || [], health: a.health || [], healthNotes: a.healthNotes || "", featured: Boolean(a.featured) });
+  fee: a.fee ?? "", reservationFee: a.reservationFee ?? "", mum: a.mum || "", dad: a.dad || "", summary: a.summary || "", story: a.story || "", photos: a.photos || [], traits: a.traits || [], health: a.health || [], healthNotes: a.healthNotes || "", featured: Boolean(a.featured) });
 async function vPets() {
   await refreshCounts();
   pets = (await A("/api/admin/animals")).animals;
   const order = { available: 0, reserved: 1, hidden: 2, adopted: 3 };
   pets.sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
-  shell("pets", `<div class="a-head"><div><h1>Pets</h1><p>Change a status here and the website updates straight away. Hidden and adopted pets don't appear on the website.</p></div><button class="btn sm" type="button" data-new-pet>+ Add a pet</button></div>
+  shell("pets", `<div class="a-head"><div><h1>Kittens</h1><p>Change a status here and the website updates straight away. Hidden kittens and kittens that have gone home don't appear on the website.</p></div><button class="btn sm" type="button" data-new-pet>+ Add a kitten</button></div>
     <div class="box">${pets.length ? `<ul class="list">${pets.map(a => `<li>${photo(a.photos?.[0], a.name, { thumb: true })}
       <div><b class="t">${esc(a.name)}</b>${a.featured ? ' <span class="pill plain">Featured</span>' : ""}
         <div class="s">${esc(LABELS.species[a.species])} · ${esc(LABELS.sex[a.sex])} · ${esc(ageText(a))} · ${a.fee !== null && a.fee !== undefined ? esc(money(a.fee, settings.currency)) : settings.defaultFee !== null ? `${esc(money(settings.defaultFee, settings.currency))} (default)` : "Fee not set"} · ${(a.photos || []).length} photo${(a.photos || []).length === 1 ? "" : "s"}</div></div>
@@ -105,7 +107,7 @@ async function vPets() {
         ${a.status === "available" || a.status === "reserved" ? `<a class="btn light sm" href="/adopt/${esc(a.slug)}" target="_blank" rel="noopener">View</a>` : ""}
         <button class="btn light sm" type="button" data-edit-pet="${esc(a.id)}">Edit</button>
         <button class="btn danger sm" type="button" data-delete-pet="${esc(a.id)}">Delete</button></div></li>`).join("")}</ul>`
-      : `<div class="pad"><div class="empty"><h3>No pets yet</h3><p>Add your first pet with a few photos and their story. They'll appear on the website as soon as you save.</p><button class="btn sm" type="button" data-new-pet>+ Add a pet</button></div></div>`}</div>`);
+      : `<div class="pad"><div class="empty"><h3>No kittens yet</h3><p>Add your first kitten with a few photos and a description. They'll appear on the website as soon as you save.</p><button class="btn sm" type="button" data-new-pet>+ Add a kitten</button></div></div>`}</div>`);
 }
 
 let editorUploads = new Set(); // photos uploaded in the open editor, cleaned up if cancelled
@@ -116,33 +118,37 @@ function openDialog(title, bodyHtml, footHtml, onClose) {
   $("input, select, textarea", dlg)?.focus();
 }
 
-function petEditor(id) {
+async function petEditor(id) {
+  const parents = parentsCache || await guarded(loadParents) || [];
   const existing = pets.find(p => p.id === id);
-  const a = existing ? { ...existing } : { name: "", species: "cat", breed: "", sex: "female", ageGroup: "young", birthDate: "", status: "available", fee: null, summary: "", story: "", photos: [], traits: [], health: ["vet-checked"], healthNotes: "", featured: false };
+  const a = existing ? { ...existing } : { name: "", species: "cat", breed: "", sex: "female", ageGroup: "baby", birthDate: "", status: "available", fee: null, reservationFee: null, mum: "", dad: "", summary: "", story: "", photos: [], traits: [], health: ["vet-checked"], healthNotes: "", featured: false };
+  const parentOpts = (role, v) => `<option value="">Not set</option>` + parents.filter(p => p.role === role).map(p => `<option value="${esc(p.id)}" ${v === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
   const photos = [...(a.photos || [])];
   editorUploads = new Set();
   const f = "pet";
   const opts = (map, v) => Object.entries(map).map(([k, l]) => `<option value="${k}" ${v === k ? "selected" : ""}>${l}</option>`).join("");
   const boxes = (name, map, sel) => `<div class="checks">${Object.entries(map).map(([k, l]) => `<label class="checkline"><input type="checkbox" name="${name}" value="${k}" ${sel.includes(k) ? "checked" : ""}><span>${esc(l)}</span></label>`).join("")}</div>`;
-  openDialog(existing ? `Edit ${a.name}` : "Add a pet", `<form class="stack" id="${f}" novalidate>
+  openDialog(existing ? `Edit ${a.name}` : "Add a kitten", `<form class="stack" id="${f}" novalidate>
     <fieldset><legend>Photos</legend><div class="photo-grid" id="photoGrid"></div>
       <div class="field"><label for="petFiles">Add photos <span class="opt">(up to 8, first is the main photo)</span></label><input id="petFiles" type="file" accept="image/*" multiple>
       <span class="hint">Bright, close-up photos work best. They're resized automatically.</span></div></fieldset>
-    <fieldset><legend>About the pet</legend>
+    <fieldset><legend>About the kitten</legend>
       <div class="row2">${field(f, "name", "Name", `<input <CONTROL maxlength="60" value="${esc(a.name)}">`)}${field(f, "species", "Type", `<select <CONTROL>${opts(LABELS.species, a.species)}</select>`)}</div>
       <div class="row2">${field(f, "breed", "Breed", `<input <CONTROL maxlength="80" value="${esc(a.breed)}" placeholder="For example: Ragdoll, or Domestic shorthair">`, { optional: true })}${field(f, "sex", "Sex", `<select <CONTROL>${opts(LABELS.sex, a.sex)}</select>`)}</div>
       <div class="row2">${field(f, "ageGroup", "Age group", `<select <CONTROL>${Object.entries(LABELS.age).map(([k, l]) => `<option value="${k}" ${a.ageGroup === k ? "selected" : ""}>${l} (${LABELS.ageHelp[k]})</option>`).join("")}</select>`)}
         ${field(f, "birthDate", "Date of birth", `<input <CONTROL type="date" value="${esc(a.birthDate)}">`, { optional: true, hint: "Estimate if unknown. Used to show exact age." })}</div>
       ${field(f, "summary", "Short summary", `<input <CONTROL maxlength="180" value="${esc(a.summary)}" placeholder="One line shown at the top of their page">`, { optional: true })}
-      ${field(f, "story", "Their story", `<textarea <CONTROL class="tall" maxlength="5000" placeholder="How they came to you, their personality, what kind of home would suit them. Leave a blank line between paragraphs.">${esc(a.story)}</textarea>`, { optional: true })}</fieldset>
+      ${field(f, "story", "Description", `<textarea <CONTROL class="tall" maxlength="5000" placeholder="Personality, training, what kind of home would suit them. Leave a blank line between paragraphs.">${esc(a.story)}</textarea>`, { optional: true })}
+      <div class="row2">${field(f, "mum", "Mum", `<select <CONTROL>${parentOpts("mum", a.mum)}</select>`, { optional: true, hint: parents.length ? "" : "Add parents under Parents first." })}${field(f, "dad", "Dad", `<select <CONTROL>${parentOpts("dad", a.dad)}</select>`, { optional: true })}</div></fieldset>
     <fieldset><legend>Personality</legend>${boxes("traits", LABELS.traits, a.traits || [])}</fieldset>
     <fieldset><legend>Health</legend>${boxes("health", LABELS.health, a.health || [])}
-      ${field(f, "healthNotes", "Health notes", `<textarea <CONTROL maxlength="600" placeholder="Any conditions, medication or diet adopters should know about.">${esc(a.healthNotes)}</textarea>`, { optional: true })}</fieldset>
+      ${field(f, "healthNotes", "Health notes", `<textarea <CONTROL maxlength="600" placeholder="Any conditions, medication or diet buyers should know about.">${esc(a.healthNotes)}</textarea>`, { optional: true })}</fieldset>
     <fieldset><legend>Listing</legend>
       <div class="row2">${field(f, "status", "Status", `<select <CONTROL>${opts(LABELS.status, a.status)}</select>`)}
-        ${field(f, "fee", `Adoption fee (${settings.currency})`, `<input <CONTROL type="number" min="0" step="1" inputmode="decimal" value="${a.fee ?? ""}" placeholder="${settings.defaultFee ?? ""}">`, { optional: true, hint: settings.defaultFee !== null ? `Leave blank to use your default (${money(settings.defaultFee, settings.currency)}).` : "Leave blank to show 'Ask us'. Set a default in Settings." })}</div>
+        ${field(f, "fee", `Kitten fee (${settings.currency})`, `<input <CONTROL type="number" min="0" step="1" inputmode="decimal" value="${a.fee ?? ""}" placeholder="${settings.defaultFee ?? ""}">`, { optional: true, hint: settings.defaultFee !== null ? `Leave blank to use your default (${money(settings.defaultFee, settings.currency)}).` : "Leave blank to show 'Ask us'. Set a default in Settings." })}</div>
+      ${field(f, "reservationFee", `Reservation fee (${settings.currency})`, `<input <CONTROL type="number" min="0" step="1" inputmode="decimal" value="${a.reservationFee ?? ""}" placeholder="${settings.defaultReservationFee ?? ""}">`, { optional: true, hint: "Refundable if you can't deliver. Leave blank to use your default." })}
       <label class="checkline"><input type="checkbox" name="featured" ${a.featured ? "checked" : ""}><span>Feature on the home page</span></label></fieldset>
-  </form>`, `<button class="btn" type="submit" form="${f}">${existing ? "Save changes" : "Add pet"}</button><button class="btn light" type="button" data-close>Cancel</button>`,
+  </form>`, `<button class="btn" type="submit" form="${f}">${existing ? "Save changes" : "Add kitten"}</button><button class="btn light" type="button" data-close>Cancel</button>`,
   async () => { // cleanup photos uploaded but never saved
     const orphans = [...editorUploads]; editorUploads = new Set();
     await Promise.all(orphans.map(pid => A(`/api/admin/images/${pid}`, { method: "DELETE" }).catch(() => {})));
@@ -153,7 +159,7 @@ function petEditor(id) {
       ? `<div class="ph uploading">Uploading…</div>`
       : `<div class="ph">${i === 0 ? '<span class="main-tag">Main</span>' : ""}<img src="/api/images/${esc(p)}/thumb" alt="Photo ${i + 1}" data-fallback>
         <div class="tools">${i > 0 ? `<button type="button" data-photo-main="${i}">Make main</button>` : "<span></span>"}<button type="button" data-photo-remove="${i}">Remove</button></div></div>`).join("")
-      || `<p class="hint">No photos yet. Pets with photos get far more applications.</p>`;
+      || `<p class="hint">No photos yet. Kittens with photos get far more enquiries.</p>`;
     $("#petFiles").disabled = photos.length >= 8;
   };
   drawPhotos();
@@ -184,7 +190,7 @@ function petEditor(id) {
     if (photos.some(p => p.startsWith("uploading"))) { toast("Please wait for photos to finish uploading."); return; }
     const fd = new FormData(form);
     const body = { ...Object.fromEntries(fd), traits: fd.getAll("traits"), health: fd.getAll("health"), featured: form.featured.checked, photos: [...photos] };
-    if (!body.name.trim()) { showFieldErrors(form, { name: "Give the pet a name." }); return; }
+    if (!body.name.trim()) { showFieldErrors(form, { name: "Give the kitten a name." }); return; }
     const btn = $(`button[form="${f}"]`); busy(btn, true);
     try {
       const res = await guarded(() => A(existing ? `/api/admin/animals/${existing.id}` : "/api/admin/animals", { method: existing ? "PUT" : "POST", body }));
@@ -196,27 +202,116 @@ function petEditor(id) {
   });
 }
 
-/* ---------------- applications ---------------- */
+/* ---------------- enquiries ---------------- */
 let appFilter = "open";
+const OPEN_STAGES = a => !["delivered", "declined"].includes(a.status);
 async function vApplications() {
   const list = (await A("/api/admin/applications")).applications;
   await refreshCounts();
-  const shown = list.filter(a => appFilter === "all" || (appFilter === "open" ? !["adopted", "declined"].includes(a.status) : a.status === appFilter));
+  const shown = list.filter(a => appFilter === "all" || (appFilter === "open" ? OPEN_STAGES(a) : a.status === appFilter));
   const chip = (v, l, n) => `<button type="button" class="chip" data-app-filter="${v}" aria-pressed="${appFilter === v}">${l}<span class="c">${n}</span></button>`;
-  shell("applications", `<div class="a-head"><div><h1>Applications</h1><p>Move each application through the stages and keep private notes. Applicants can't see these.</p></div></div>
-    <div class="chips mt-s">${chip("open", "Open", list.filter(a => !["adopted", "declined"].includes(a.status)).length)}${Object.entries(LABELS.appStatus).map(([v, l]) => chip(v, l, list.filter(a => a.status === v).length)).join("")}${chip("all", "All", list.length)}</div><br>
-    <div class="box">${shown.length ? `<ul class="list">${shown.map(a => `<li class="text"><div>
-      <b class="t">${esc(a.name)}</b> <span class="pill ${esc(a.status)}">${esc(LABELS.appStatus[a.status])}</span>
-      <div class="s">For <b>${esc(a.animalName)}</b> · received ${esc(fmtDateTime(a.createdAt))}</div>
-      <details class="app-more" ${isPhone() ? "" : "open"}><summary>Show details &amp; notes</summary>
-      <dl class="kv"><dt>Email</dt><dd>${esc(a.email)}</dd>${a.phone ? `<dt>Phone</dt><dd>${esc(a.phone)}</dd>` : ""}<dt>Postcode</dt><dd>${esc(a.postcode)}</dd>
-        <dt>Home</dt><dd>${esc(LABELS.homeType[a.homeType] || a.homeType)}, ${esc(LABELS.outdoor[a.outdoor] || a.outdoor)}</dd><dt>Household</dt><dd>${esc(a.household)}</dd>
-        ${a.otherPets ? `<dt>Other pets</dt><dd>${esc(a.otherPets)}</dd>` : ""}${a.experience ? `<dt>Experience</dt><dd>${esc(a.experience)}</dd>` : ""}</dl>
-      <div class="msg">${esc(a.message)}</div>
-      <div class="notes"><label class="hint" for="n-${esc(a.id)}">Private notes</label><textarea id="n-${esc(a.id)}" data-notes="${esc(a.id)}" maxlength="3000" placeholder="Call notes, home check date…">${esc(a.notes || "")}</textarea></div></details></div>
-      <div class="ctrl"><label class="sr-only" for="as-${esc(a.id)}">Stage</label><select id="as-${esc(a.id)}" data-app-status="${esc(a.id)}">${Object.entries(LABELS.appStatus).map(([v, l]) => `<option value="${v}" ${a.status === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-        <button class="btn sm" type="button" data-app-save="${esc(a.id)}">Save</button><button class="btn danger sm" type="button" data-app-delete="${esc(a.id)}">Delete</button></div></li>`).join("")}</ul>`
-      : `<div class="pad muted">${list.length ? "No applications at this stage." : "No applications yet. When someone applies on the website, it appears here (and in your email if alerts are set up)."}</div>`}</div>`);
+  const cur = settings.currency;
+  const balance = a => (a.agreedFee !== null && a.agreedFee !== undefined && a.agreedFee !== "" ? Math.max(0, Number(a.agreedFee) - (a.paidInFullDate ? Number(a.agreedFee) : Number(a.depositAmount || 0))) : null);
+  const money2 = n => money(n, cur);
+  const num = (id, name, label, v) => `<div class="field"><label for="${name}-${id}">${label}</label><input id="${name}-${id}" data-pay="${name}" type="number" min="0" step="1" inputmode="decimal" value="${v ?? ""}"></div>`;
+  const date = (id, name, label, v) => `<div class="field"><label for="${name}-${id}">${label}</label><input id="${name}-${id}" data-pay="${name}" type="date" value="${esc(v || "")}"></div>`;
+  shell("applications", `<div class="a-head"><div><h1>Enquiries</h1><p>Move each enquiry through the stages and record payments and delivery. Buyers can't see any of this.</p></div></div>
+    <div class="chips mt-s">${chip("open", "Open", list.filter(OPEN_STAGES).length)}${Object.entries(LABELS.appStatus).map(([v, l]) => chip(v, l, list.filter(a => a.status === v).length)).join("")}${chip("all", "All", list.length)}</div><br>
+    <div class="box">${shown.length ? `<ul class="list">${shown.map(a => { const id = esc(a.id), bal = balance(a); return `<li class="text" data-enquiry="${id}"><div>
+      <b class="t">${esc(a.name)}</b> <span class="pill ${esc(a.status)}">${esc(LABELS.appStatus[a.status] || a.status)}</span> ${a.intent ? `<span class="pill plain">${esc(LABELS.intent[a.intent])}</span>` : ""}
+      <div class="s">${esc(a.animalName)} · received ${esc(fmtDateTime(a.createdAt))}${bal !== null ? ` · ${bal === 0 ? "paid in full" : `balance ${esc(money2(bal))}`}` : ""}</div>
+      <details class="app-more" ${isPhone() ? "" : "open"}><summary>Show details, payments &amp; delivery</summary>
+      <dl class="kv"><dt>Email</dt><dd>${esc(a.email)}</dd>${a.phone ? `<dt>Phone</dt><dd>${esc(a.phone)}</dd>` : ""}
+        <dt>Delivery area</dt><dd>${esc(a.deliveryArea || a.postcode || "—")}</dd>
+        <dt>Male or female</dt><dd>${esc(LABELS.sexPref[a.sexPreference] || "—")}</dd>
+        <dt>Experience</dt><dd>${esc(a.experience === "yes" ? "Yes" : a.experience === "no" ? "No, first kitten" : "—")}${a.experienceDetails ? `: ${esc(a.experienceDetails)}` : ""}</dd>
+        <dt>Children</dt><dd>${esc(a.children === "yes" ? `Yes${a.childrenAges ? ` (${a.childrenAges})` : ""}` : a.children === "no" ? "No" : "—")}</dd>
+        ${a.otherPets ? `<dt>Other pets</dt><dd>${esc(a.otherPets)}</dd>` : ""}</dl>
+      ${a.message ? `<div class="msg">${esc(a.message)}</div>` : ""}
+      <div class="pay-grid">${num(id, "agreedFee", `Agreed kitten fee (${esc(cur)})`, a.agreedFee)}${num(id, "depositAmount", `Deposit / reservation paid (${esc(cur)})`, a.depositAmount)}
+        ${date(id, "depositDate", "Deposit date", a.depositDate)}${date(id, "paidInFullDate", "Paid in full on", a.paidInFullDate)}${date(id, "deliveryDate", "Delivery date", a.deliveryDate)}</div>
+      <fieldset class="docs"><legend class="hint">Documents handed over</legend><div class="checks">${Object.entries(LABELS.docs).map(([k, l]) => `<label class="checkline"><input type="checkbox" data-doc="${k}" ${(a.docs || []).includes(k) ? "checked" : ""}><span>${esc(l)}</span></label>`).join("")}</div></fieldset>
+      <div class="notes"><label class="hint" for="n-${id}">Private notes</label><textarea id="n-${id}" data-notes="${id}" maxlength="3000" placeholder="Chat notes, delivery address, anything to remember…">${esc(a.notes || "")}</textarea></div></details></div>
+      <div class="ctrl"><label class="sr-only" for="as-${id}">Stage</label><select id="as-${id}" data-app-status="${id}">${Object.entries(LABELS.appStatus).map(([v, l]) => `<option value="${v}" ${a.status === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <button class="btn sm" type="button" data-app-save="${id}">Save</button><button class="btn danger sm" type="button" data-app-delete="${id}">Delete</button></div></li>`; }).join("")}</ul>`
+      : `<div class="pad muted">${list.length ? "No enquiries at this stage." : "No enquiries yet. When someone sends one on the website, it appears here (and in your email if alerts are set up)."}</div>`}</div>`);
+}
+
+/* ---------------- parents & litters ---------------- */
+let parents = [], litters = [];
+async function vParents() {
+  await refreshCounts();
+  parents = await loadParents();
+  shell("parents", `<div class="a-head"><div><h1>Parents</h1><p>Your mums and dads, shown on the "Meet the parents" page and on each kitten's page.</p></div><button class="btn sm" type="button" data-edit-parent="new">+ Add a parent</button></div>
+    <div class="box">${parents.length ? `<ul class="list">${parents.map(p => `<li>${photo(p.photo, p.name, { thumb: true })}<div><b class="t">${esc(p.name)}</b> <span class="pill plain">${esc(LABELS.role[p.role])}</span>
+      <div class="s">${[p.breed, p.colour, p.born ? `born ${p.born}` : ""].filter(Boolean).map(esc).join(" · ")}</div></div>
+      <div class="ctrl"><button class="btn light sm" type="button" data-edit-parent="${esc(p.id)}">Edit</button><button class="btn danger sm" type="button" data-delete-parent="${esc(p.id)}">Delete</button></div></li>`).join("")}</ul>`
+      : `<div class="pad muted">No parents yet. Add your mums and dads with a photo; buyers love meeting them.</div>`}</div>`);
+}
+function parentEditor(id) {
+  const existing = parents.find(p => p.id === id);
+  const p = existing ? { ...existing } : { name: "", role: "mum", breed: "", colour: "", born: "", about: "", healthNotes: "", photo: "" };
+  let pic = p.photo; editorUploads = new Set();
+  const f = "parent";
+  openDialog(existing ? `Edit ${p.name}` : "Add a parent", `<form class="stack" id="${f}" novalidate>
+    <div class="row2">${field(f, "name", "Name", `<input <CONTROL maxlength="60" value="${esc(p.name)}">`)}${field(f, "role", "Mum or dad", `<select <CONTROL><option value="mum" ${p.role === "mum" ? "selected" : ""}>Mum</option><option value="dad" ${p.role === "dad" ? "selected" : ""}>Dad</option></select>`)}</div>
+    <div class="row2">${field(f, "breed", "Breed", `<input <CONTROL maxlength="80" value="${esc(p.breed)}">`, { optional: true })}${field(f, "colour", "Colour", `<input <CONTROL maxlength="80" value="${esc(p.colour)}">`, { optional: true })}</div>
+    ${field(f, "born", "Born", `<input <CONTROL maxlength="20" value="${esc(p.born)}" placeholder="For example: 2022">`, { optional: true })}
+    ${field(f, "about", "About", `<textarea <CONTROL maxlength="1500" placeholder="Temperament and personality.">${esc(p.about)}</textarea>`, { optional: true })}
+    ${field(f, "healthNotes", "Health", `<textarea <CONTROL maxlength="600" placeholder="Health checks and tests.">${esc(p.healthNotes)}</textarea>`, { optional: true })}
+    <div class="field"><span class="label">Photo <span class="opt">(optional)</span></span><div class="photo-grid" id="parentPic"></div><input id="parentFile" type="file" accept="image/*" aria-label="Upload a photo"></div></form>`,
+    `<button class="btn" type="submit" form="${f}">${existing ? "Save changes" : "Add parent"}</button><button class="btn light" type="button" data-close>Cancel</button>`,
+    async () => { const o = [...editorUploads]; editorUploads = new Set(); await Promise.all(o.map(x => A(`/api/admin/images/${x}`, { method: "DELETE" }).catch(() => {}))); });
+  const draw = () => { $("#parentPic").innerHTML = pic ? `<div class="ph"><img src="/api/images/${esc(pic)}/thumb" alt="Photo" data-fallback><div class="tools"><span></span><button type="button" id="parentPicRemove">Remove</button></div></div>` : ""; };
+  draw();
+  $("#parentPic").addEventListener("click", e => { if (e.target.id === "parentPicRemove") { if (editorUploads.has(pic)) { editorUploads.delete(pic); A(`/api/admin/images/${pic}`, { method: "DELETE" }).catch(() => {}); } pic = ""; draw(); } });
+  $("#parentFile").addEventListener("change", async e => {
+    const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+    try { const [dataUrl, thumbDataUrl] = await Promise.all([resizeImage(file), resizeImage(file, 600, 0.78)]); const { id: pid } = await guarded(() => A("/api/admin/images", { method: "POST", body: { dataUrl, thumbDataUrl } })); if (editorUploads.has(pic)) A(`/api/admin/images/${pic}`, { method: "DELETE" }).catch(() => {}); pic = pid; editorUploads.add(pid); draw(); }
+    catch (err) { toast(err.message || "Upload failed.", { error: true }); }
+  });
+  const form = $("#" + f);
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const body = { ...Object.fromEntries(new FormData(form)), photo: pic || "" };
+    if (!body.name.trim()) { showFieldErrors(form, { name: "Give them a name." }); return; }
+    const btn = $(`button[form="${f}"]`); busy(btn, true);
+    try { await guarded(() => A(existing ? `/api/admin/parents/${existing.id}` : "/api/admin/parents", { method: existing ? "PUT" : "POST", body })); editorUploads = new Set(); dlg.close(); toast("Saved"); vParents(); }
+    catch (err) { busy(btn, false); showFieldErrors(form, err.fields); formError(form, err.message); }
+  });
+}
+async function vLitters() {
+  await refreshCounts();
+  const [ps, ls] = await Promise.all([loadParents(), A("/api/admin/litters")]);
+  parents = ps; litters = ls.litters;
+  const nameOf = pid => parents.find(p => p.id === pid)?.name || "";
+  shell("litters", `<div class="a-head"><div><h1>Litters</h1><p>Planned and new litters, shown on the "Upcoming litters" page when published.</p></div><button class="btn sm" type="button" data-edit-litter="new">+ Add a litter</button></div>
+    <div class="box">${litters.length ? `<ul class="list">${litters.map(l => `<li class="text"><div><b class="t">${esc([nameOf(l.mum), nameOf(l.dad)].filter(Boolean).join(" × ") || "Litter")}</b> <span class="pill plain">${esc(LABELS.litterStatus[l.status])}</span> <span class="pill ${l.published ? "published" : "draft"}">${l.published ? "Published" : "Draft"}</span>
+      <div class="s">${esc(l.when)}${l.details ? ` · ${esc(l.details)}` : ""}</div></div>
+      <div class="ctrl"><button class="btn light sm" type="button" data-edit-litter="${esc(l.id)}">Edit</button><button class="btn danger sm" type="button" data-delete-litter="${esc(l.id)}">Delete</button></div></li>`).join("")}</ul>`
+      : `<div class="pad muted">No litters yet. Add one so buyers can reserve early.</div>`}</div>`);
+}
+function litterEditor(id) {
+  const existing = litters.find(l => l.id === id);
+  const l = existing ? { ...existing } : { mum: "", dad: "", status: "expected", when: "", details: "", published: true };
+  const f = "litter";
+  const popts = (role, v) => `<option value="">Not set</option>` + parents.filter(p => p.role === role).map(p => `<option value="${esc(p.id)}" ${v === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+  openDialog(existing ? "Edit litter" : "Add a litter", `<form class="stack" id="${f}" novalidate>
+    <div class="row2">${field(f, "mum", "Mum", `<select <CONTROL>${popts("mum", l.mum)}</select>`)}${field(f, "dad", "Dad", `<select <CONTROL>${popts("dad", l.dad)}</select>`)}</div>
+    <div class="row2">${field(f, "status", "Status", `<select <CONTROL>${Object.entries(LABELS.litterStatus).map(([v, t]) => `<option value="${v}" ${l.status === v ? "selected" : ""}>${t}</option>`).join("")}</select>`)}
+      ${field(f, "when", "Expected or born", `<input <CONTROL maxlength="60" value="${esc(l.when)}" placeholder="For example: March 2027">`)}</div>
+    ${field(f, "details", "Details", `<textarea <CONTROL maxlength="800" placeholder="Expected colours, how many kittens, anything buyers should know.">${esc(l.details)}</textarea>`, { optional: true })}
+    <label class="checkline"><input type="checkbox" name="published" ${l.published ? "checked" : ""}><span>Show on the website</span></label></form>`,
+    `<button class="btn" type="submit" form="${f}">${existing ? "Save changes" : "Add litter"}</button><button class="btn light" type="button" data-close>Cancel</button>`);
+  const form = $("#" + f);
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const body = { ...Object.fromEntries(new FormData(form)), published: form.published.checked };
+    if (!body.when.trim()) { showFieldErrors(form, { when: "Add when the litter is expected or was born." }); return; }
+    const btn = $(`button[form="${f}"]`); busy(btn, true);
+    try { await guarded(() => A(existing ? `/api/admin/litters/${existing.id}` : "/api/admin/litters", { method: existing ? "PUT" : "POST", body })); dlg.close(); toast("Litter saved"); vLitters(); }
+    catch (err) { busy(btn, false); showFieldErrors(form, err.fields); formError(form, err.message); }
+  });
 }
 
 /* ---------------- messages ---------------- */
@@ -237,12 +332,12 @@ let stories = [];
 async function vStories() {
   await refreshCounts();
   stories = (await A("/api/admin/stories")).stories;
-  shell("stories", `<div class="a-head"><div><h1>Happy tails</h1><p>Adoption success stories. Published stories appear on the website and build trust with new adopters.</p></div><button class="btn sm" type="button" data-edit-story="new">+ Add a story</button></div>
+  shell("stories", `<div class="a-head"><div><h1>Happy tails</h1><p>Stories and photos from your buyers. Published stories appear on the website and build trust with new buyers.</p></div><button class="btn sm" type="button" data-edit-story="new">+ Add a story</button></div>
     <div class="box">${stories.length ? `<ul class="list">${[...stories].sort((a, b) => (b.submitted && !b.published) - (a.submitted && !a.published)).map(s => `<li>${photo(s.photo, s.title, { thumb: true })}<div><b class="t">${esc(s.title)}</b> <span class="pill ${s.published ? "published" : s.submitted ? "new" : "draft"}">${s.published ? "Published" : s.submitted ? "Waiting for approval" : "Draft"}</span>
       <div class="s">${esc(s.animalName || "")}${s.animalName ? " · " : ""}${esc(fmtDate(s.createdAt))}${s.submittedBy ? ` · sent by ${esc(s.submittedBy.name)} (${esc(s.submittedBy.email)})` : ""}</div>
       ${s.submitted && !s.published ? `<div class="msg">${esc(s.body)}</div>` : ""}</div>
       <div class="ctrl">${s.submitted && !s.published ? `<button class="btn sm" type="button" data-approve-story="${esc(s.id)}">Approve &amp; publish</button>` : ""}<button class="btn light sm" type="button" data-edit-story="${esc(s.id)}">Edit</button><button class="btn danger sm" type="button" data-delete-story="${esc(s.id)}">Delete</button></div></li>`).join("")}</ul>`
-      : `<div class="pad muted">No stories yet. When a pet settles into their new home, ask the family for a photo and a few words.</div>`}</div>`);
+      : `<div class="pad muted">No stories yet. When a kitten settles into their new home, ask the family for a photo and a few words.</div>`}</div>`);
 }
 function storyEditor(id) {
   const existing = stories.find(s => s.id === id);
@@ -283,20 +378,23 @@ async function vSettings() {
   const inp = (name, label, opts = {}, attrs = "") => field(f, name, label, `<input <CONTROL ${attrs} value="${esc(s[name] ?? "")}">`, opts);
   shell("settings", `<div class="a-head"><div><h1>Settings</h1><p>These details appear across your whole website.</p></div></div>
     <div class="box"><div class="pad"><form class="stack" id="${f}" novalidate>
-      <fieldset><legend>Your rescue</legend>
-        <div class="row2">${inp("rescueName", "Rescue name", {}, 'maxlength="60"')}${inp("tagline", "Tagline", { optional: true }, 'maxlength="120"')}</div>
+      <fieldset><legend>Your business</legend>
+        <div class="row2">${inp("rescueName", "Business name", {}, 'maxlength="60"')}${inp("tagline", "Tagline", { optional: true }, 'maxlength="120"')}</div>
         <div class="row2">${inp("town", "Town", { optional: true }, 'maxlength="60"')}${inp("region", "County or region", { optional: true }, 'maxlength="60"')}</div>
-        ${inp("charityNumber", "Registered charity number", { optional: true, hint: "Shown in the footer and About page if set." }, 'maxlength="40"')}
-        ${field(f, "aboutText", "About your rescue", `<textarea <CONTROL class="tall" maxlength="5000" placeholder="Your story: why you started rescuing, how you care for animals. Leave a blank line between paragraphs.">${esc(s.aboutText)}</textarea>`, { optional: true, hint: "Leave blank to use the standard text." })}</fieldset>
+        ${inp("licenceNumber", "Breeding licence number", { optional: true, hint: "Shown in the footer and About page if set." }, 'maxlength="60"')}
+        ${field(f, "aboutText", "About you", `<textarea <CONTROL class="tall" maxlength="5000" placeholder="Your story: how you started, how you raise and train your kittens. Leave a blank line between paragraphs.">${esc(s.aboutText)}</textarea>`, { optional: true, hint: "Leave blank to use the standard text." })}</fieldset>
       <fieldset><legend>Contact &amp; social</legend>
         <div class="row2">${inp("email", "Public email", { optional: true }, 'type="email" maxlength="200"')}${inp("phone", "Public phone", { optional: true }, 'type="tel" maxlength="30"')}</div>
-        <div class="row2">${inp("facebookUrl", "Facebook page link", { optional: true }, 'type="url" maxlength="300"')}${inp("instagramUrl", "Instagram link", { optional: true }, 'type="url" maxlength="300"')}</div>
-        ${inp("donateUrl", "Donation link", { optional: true, hint: "For example a PayPal, JustGiving or Ko-fi page." }, 'type="url" maxlength="300"')}</fieldset>
-      <fieldset><legend>Adoption fees</legend>
-        <div class="row2">${inp("currency", "Currency symbol", {}, 'maxlength="3"')}${field(f, "defaultFee", "Default adoption fee", `<input <CONTROL type="number" min="0" step="1" inputmode="decimal" value="${s.defaultFee ?? ""}">`, { optional: true, hint: "Used when a pet has no fee of its own." })}</div>
-        ${field(f, "feeIncludes", "What the fee includes", `<textarea <CONTROL maxlength="400">${esc(s.feeIncludes)}</textarea>`, { optional: true })}</fieldset>
+        <div class="row2">${inp("facebookUrl", "Facebook page link", { optional: true }, 'type="url" maxlength="300"')}${inp("instagramUrl", "Instagram link", { optional: true }, 'type="url" maxlength="300"')}</div></fieldset>
+      <fieldset><legend>Fees, payment &amp; delivery</legend>
+        <div class="row2">${inp("currency", "Currency symbol", {}, 'maxlength="3"')}${field(f, "goHomeWeeks", "Kittens go home at (weeks)", `<input <CONTROL type="number" min="8" max="20" step="1" value="${s.goHomeWeeks ?? 13}">`, { hint: "Used to show each kitten's ready date." })}</div>
+        <div class="row2">${field(f, "defaultFee", "Default kitten fee", `<input <CONTROL type="number" min="0" step="1" inputmode="decimal" value="${s.defaultFee ?? ""}">`, { optional: true, hint: "Used when a kitten has no fee of its own." })}
+          ${field(f, "defaultReservationFee", "Default reservation fee", `<input <CONTROL type="number" min="0" step="1" inputmode="decimal" value="${s.defaultReservationFee ?? ""}">`, { optional: true, hint: "Refundable if you can't deliver the kitten." })}</div>
+        ${field(f, "feeIncludes", "What the kitten fee includes", `<textarea <CONTROL maxlength="400">${esc(s.feeIncludes)}</textarea>`, { optional: true })}
+        ${field(f, "paymentInfo", "Payment information", `<textarea <CONTROL maxlength="800">${esc(s.paymentInfo)}</textarea>`, { optional: true, hint: "Shown on How it works and in the FAQ." })}
+        ${field(f, "deliveryInfo", "Delivery information", `<textarea <CONTROL maxlength="800">${esc(s.deliveryInfo)}</textarea>`, { optional: true, hint: "For example, areas you deliver to and any delivery charge." })}</fieldset>
       <fieldset><legend>Announcement bar</legend>
-        ${inp("announcement", "Message at the top of every page", { optional: true, hint: "For example: 'Kitten season is here: 6 kittens looking for homes'. Leave blank to hide." }, 'maxlength="160"')}</fieldset>
+        ${inp("announcement", "Message at the top of every page", { optional: true, hint: "For example: 'New litter: 4 kittens available to reserve'. Leave blank to hide." }, 'maxlength="160"')}</fieldset>
       <div><button class="btn" type="submit">Save settings</button></div></form></div></div>
     <div class="box" id="securityBox"><h2>Security: sign-in email and password</h2><div class="pad" id="securityPad"><div class="loading" role="status"><div class="spinner"></div></div></div></div>`);
   renderSecurity();
@@ -343,13 +441,13 @@ async function renderSecurity() {
 async function vWaitlist() {
   await refreshCounts();
   const { waitlist, emailReady } = await A("/api/admin/waitlist");
-  const want = w => [w.sex === "any" ? "" : LABELS.sex[w.sex], w.ageGroup === "any" ? "" : LABELS.age[w.ageGroup].toLowerCase(), w.species === "any" ? "any pet" : LABELS.species[w.species].toLowerCase()].filter(Boolean).join(" ");
-  shell("waitlist", `<div class="a-head"><div><h1>Waiting list</h1><p>People who asked to be emailed when a matching pet arrives. When you list a pet as Available, matching people are emailed automatically, once.</p></div></div>
+  const want = w => [w.sex === "any" ? "" : LABELS.sex[w.sex], w.ageGroup === "any" ? "" : LABELS.age[w.ageGroup].toLowerCase(), w.species === "any" ? "any kitten" : LABELS.species[w.species].toLowerCase()].filter(Boolean).join(" ");
+  shell("waitlist", `<div class="a-head"><div><h1>Waiting list</h1><p>People who asked to be emailed when a matching kitten is available. When you list a kitten as Available, matching people are emailed automatically, once.</p></div></div>
     ${emailReady ? "" : `<div class="setup-note"><b>Alerts are switched off for now.</b> They start automatically once email is set up with your own domain (RESEND_API_KEY and MAIL_FROM in Netlify; see docs/SETUP.md). People can still join the list.</div><br>`}
     <div class="box">${waitlist.length ? `<ul class="list">${waitlist.map(w => `<li class="text"><div><b class="t">${esc(w.name)}</b> <span class="pill plain">Wants: ${esc(want(w))}</span>
       <div class="s">${esc(w.email)} · joined ${esc(fmtDate(w.createdAt))} · ${(w.notified || []).length} alert${(w.notified || []).length === 1 ? "" : "s"} sent</div></div>
       <div class="ctrl"><button class="btn danger sm" type="button" data-delete-wait="${esc(w.id)}">Remove</button></div></li>`).join("")}</ul>`
-      : `<div class="pad muted">Nobody on the waiting list yet. Visitors can join at the bottom of the "Meet our pets" page.</div>`}</div>`);
+      : `<div class="pad muted">Nobody on the waiting list yet. Visitors can join at the bottom of the "Our kittens" page.</div>`}</div>`);
 }
 
 /* ---------------- visitors ---------------- */
@@ -360,13 +458,13 @@ async function vVisitors() {
   const max = Math.max(1, ...st.days.map(d => d.views));
   const W = 600, H = 140, bw = W / st.days.length;
   const bars = st.days.map((d, i) => { const h = Math.round((d.views / max) * (H - 20)); return `<rect x="${(i * bw + 2).toFixed(1)}" y="${H - h}" width="${(bw - 4).toFixed(1)}" height="${h}" rx="3" fill="${i === st.days.length - 1 ? "#a4515a" : "#e9bcb9"}"><title>${esc(fmtDate(d.date))}: ${d.views} views</title></rect>`; }).join("");
-  const pageName = k => ({ "/": "Home", "/adopt": "Meet our pets", "/adopt/(pet)": "Pet pages", "/how-to-adopt": "How to adopt", "/happy-tails": "Happy tails", "/about": "About", "/help": "Ways to help", "/donate": "Donate", "/faq": "FAQ", "/contact": "Contact", "/privacy": "Privacy" }[k] || k);
+  const pageName = k => ({ "/": "Home", "/adopt": "Our kittens", "/adopt/(pet)": "Kitten pages", "/parents": "Meet the parents", "/litters": "Upcoming litters", "/how-to-adopt": "How it works", "/happy-tails": "Happy tails", "/about": "About", "/faq": "FAQ", "/contact": "Contact", "/privacy": "Privacy" }[k] || k);
   const rows = (list, f = x => x) => list.length ? `<ul class="list">${list.map(r => `<li class="text"><div><b class="t">${esc(f(r.key))}</b></div><div class="ctrl"><b>${r.views}</b>&nbsp;<span class="s">views</span></div></li>`).join("")}</ul>` : `<div class="pad muted">No visits counted yet.</div>`;
   shell("visitors", `<div class="a-head"><div><h1>Visitors</h1><p>Anonymous page views: no cookies, no personal data. Counted once per page per visit.</p></div></div>
     <div class="stats"><div class="stat hl"><b>${last7}</b><span>Views, last 7 days</span></div><div class="stat"><b>${st.total}</b><span>Views, last 30 days</span></div>
-      <div class="stat"><b>${st.topPets[0] ? esc(st.topPets[0].views) : 0}</b><span>${st.topPets[0] ? `Top pet: ${esc(st.topPets[0].key)}` : "Top pet"}</span></div><div class="stat"><b>${st.days[st.days.length - 1].views}</b><span>Views today</span></div></div>
+      <div class="stat"><b>${st.topPets[0] ? esc(st.topPets[0].views) : 0}</b><span>${st.topPets[0] ? `Top kitten: ${esc(st.topPets[0].key)}` : "Top kitten"}</span></div><div class="stat"><b>${st.days[st.days.length - 1].views}</b><span>Views today</span></div></div>
     <div class="box"><h2>Last 30 days</h2><div class="pad"><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Daily page views for the last 30 days">${bars}</svg></div></div>
-    <div class="box"><h2>Most viewed pets</h2>${rows(st.topPets)}</div>
+    <div class="box"><h2>Most viewed kittens</h2>${rows(st.topPets)}</div>
     <div class="box"><h2>Most viewed pages</h2>${rows(st.topPages, pageName)}</div>`);
 }
 
@@ -375,7 +473,7 @@ async function vMore() {
   await refreshCounts();
   const go = (h, l) => `<a href="#${h}">${l}<span aria-hidden="true">›</span></a>`;
   shell("more", `<div class="a-head"><div><h1>More</h1><p>Everything else for running your website.</p></div></div>
-    <div class="box more-links">${go("stories", `Happy tails${counts.stories ? ` (${counts.stories} to approve)` : ""}`)}${go("waitlist", "Waiting list")}${go("visitors", "Visitors")}${go("settings", "Settings &amp; security")}${go("backup", "Backup")}
+    <div class="box more-links">${go("parents", "Parents")}${go("litters", "Litters")}${go("stories", `Happy tails${counts.stories ? ` (${counts.stories} to approve)` : ""}`)}${go("waitlist", "Waiting list")}${go("visitors", "Visitors")}${go("settings", "Settings &amp; security")}${go("backup", "Backup")}
       <a href="/" target="_blank" rel="noopener">View website<span aria-hidden="true">↗</span></a>
       <button type="button" id="logoutMore">Sign out</button></div>`);
 }
@@ -384,13 +482,13 @@ async function vMore() {
 async function vBackup() {
   await refreshCounts();
   const { backups } = await A("/api/admin/backups");
-  shell("backup", `<div class="a-head"><div><h1>Backup</h1><p>A full copy of pets, applications, messages, stories, waiting list and settings.</p></div></div>
+  shell("backup", `<div class="a-head"><div><h1>Backup</h1><p>A full copy of kittens, enquiries (with payments and delivery), messages, parents, litters, stories, waiting list and settings.</p></div></div>
     <div class="box"><h2>Automatic monthly backups</h2><div class="pad"><p>A backup is saved automatically on the 1st of every month, and the last 12 are kept here.${summary?.email?.owner ? " You'll get an email each time." : ""} Photos stay on the website and aren't included.</p>
       <div class="btn-row mt-m"><button class="btn light" type="button" id="backupNow">Save a backup now</button></div></div>
       ${backups.length ? `<ul class="list">${backups.map(d => `<li class="text"><div><b class="t">${esc(fmtDate(d, true))}</b></div><div class="ctrl"><button class="btn light sm" type="button" data-backup-dl="${esc(d)}">Download</button></div></li>`).join("")}</ul>` : `<div class="pad muted">No automatic backups yet. The first one is saved on the 1st of next month, or press "Save a backup now".</div>`}</div>
     <div class="box"><h2>Download right now</h2><div class="pad"><p>Get a copy of everything as it is this minute.</p>
       <div class="btn-row mt-m"><button class="btn" type="button" id="downloadBackup">Download backup</button></div>
-      <p class="hint mt-m">Backups contain adopters' personal details. Store them privately and delete old copies you no longer need.</p></div></div>`);
+      <p class="hint mt-m">Backups contain buyers' personal details. Store them privately and delete old copies you no longer need.</p></div></div>`);
 }
 async function downloadBackup(btn, date) {
   busy(btn, true, "Preparing…");
@@ -421,14 +519,21 @@ document.addEventListener("click", e => {
   if (b.dataset.appFilter) { appFilter = b.dataset.appFilter; act(vApplications); return; }
   if (b.dataset.appSave) {
     const id = b.dataset.appSave;
-    return act(async () => { busy(b, true); await A(`/api/admin/applications/${id}`, { method: "PUT", body: { status: $(`[data-app-status="${CSS.escape(id)}"]`).value, notes: $(`[data-notes="${CSS.escape(id)}"]`).value } }); toast("Application updated"); vApplications(); });
+    const li = $(`[data-enquiry="${CSS.escape(id)}"]`);
+    const body = { status: $(`[data-app-status="${CSS.escape(id)}"]`).value, notes: $(`[data-notes="${CSS.escape(id)}"]`).value, docs: $$("[data-doc]:checked", li).map(c => c.dataset.doc) };
+    $$("[data-pay]", li).forEach(i => { body[i.dataset.pay] = i.value; });
+    return act(async () => { busy(b, true); await A(`/api/admin/applications/${id}`, { method: "PUT", body }); toast("Enquiry updated"); vApplications(); });
   }
-  if (b.dataset.appDelete) return confirmStep(b, () => act(async () => { await A(`/api/admin/applications/${b.dataset.appDelete}`, { method: "DELETE" }); toast("Application deleted"); vApplications(); }));
+  if (b.dataset.appDelete) return confirmStep(b, () => act(async () => { await A(`/api/admin/applications/${b.dataset.appDelete}`, { method: "DELETE" }); toast("Enquiry deleted"); vApplications(); }));
   if (b.dataset.msgToggle) return act(async () => { await A(`/api/admin/messages/${b.dataset.msgToggle}`, { method: "PUT", body: { status: b.dataset.next } }); vMessages(); });
   if (b.dataset.msgDelete) return confirmStep(b, () => act(async () => { await A(`/api/admin/messages/${b.dataset.msgDelete}`, { method: "DELETE" }); toast("Message deleted"); vMessages(); }));
   if (b.dataset.editStory) return storyEditor(b.dataset.editStory === "new" ? null : b.dataset.editStory);
   if (b.dataset.deleteStory) return confirmStep(b, () => act(async () => { await A(`/api/admin/stories/${b.dataset.deleteStory}`, { method: "DELETE" }); toast("Story deleted"); vStories(); }));
   if (b.id === "downloadBackup") return downloadBackup(b);
+  if (b.dataset.editParent) return parentEditor(b.dataset.editParent === "new" ? null : b.dataset.editParent);
+  if (b.dataset.deleteParent) return confirmStep(b, () => act(async () => { await A(`/api/admin/parents/${b.dataset.deleteParent}`, { method: "DELETE" }); parentsCache = null; toast("Parent deleted"); vParents(); }));
+  if (b.dataset.editLitter) return litterEditor(b.dataset.editLitter === "new" ? null : b.dataset.editLitter);
+  if (b.dataset.deleteLitter) return confirmStep(b, () => act(async () => { await A(`/api/admin/litters/${b.dataset.deleteLitter}`, { method: "DELETE" }); toast("Litter deleted"); vLitters(); }));
   if (b.dataset.backupDl) return downloadBackup(b, b.dataset.backupDl);
   if (b.id === "backupNow") return act(async () => { busy(b, true, "Saving…"); await A("/api/admin/backups", { method: "POST" }); toast("Backup saved"); vBackup(); });
   if (b.dataset.approveStory) {
@@ -448,7 +553,7 @@ dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
 window.addEventListener("hashchange", route);
 
 /* ---------------- router & boot ---------------- */
-const VIEWS = { overview: vOverview, pets: vPets, applications: vApplications, messages: vMessages, stories: vStories, waitlist: vWaitlist, visitors: vVisitors, settings: vSettings, backup: vBackup, more: vMore };
+const VIEWS = { overview: vOverview, pets: vPets, applications: vApplications, parents: vParents, litters: vLitters, messages: vMessages, stories: vStories, waitlist: vWaitlist, visitors: vVisitors, settings: vSettings, backup: vBackup, more: vMore };
 function renderBrand() { $("#adminBrand").innerHTML = `${LOGO}<span><b>${esc(settings?.rescueName || "Pawfamily")}</b><small>Owner dashboard</small></span>`; }
 async function route() {
   if (!me.signedIn) return renderLogin();
