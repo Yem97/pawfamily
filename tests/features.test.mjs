@@ -10,7 +10,7 @@ process.env.ADMIN_EMAIL = "owner@example.com";
 process.env.SESSION_SECRET = "f".repeat(40);
 process.env.RESEND_API_KEY = "re_test_dummy";
 process.env.NOTIFY_EMAIL = "owner@example.com";
-process.env.MAIL_FROM = "Pawfamily <alerts@pawfamilyfreehome.com>";
+process.env.MAIL_FROM = "Pawfamily <alerts@pawfamilyrehoming.com>";
 
 // Capture outgoing emails instead of calling Resend.
 const sent = [];
@@ -149,4 +149,16 @@ test("sitemap and robots", async () => {
   assert.match(sm, /\/happy-tails<\/loc>/, "listed once a story is published");
   const rb = await (await seo(new Request(`${BASE}/robots.txt`))).text();
   assert.match(rb, /Disallow: \/admin\//); assert.match(rb, /Sitemap: https:\/\/pawfamily\.test\/sitemap\.xml/);
+});
+
+test("official address: production hosts use pawfamilyrehoming.com, local hosts keep their own", async () => {
+  const { publicOrigin } = await import("../netlify/functions/lib/site.mjs");
+  assert.equal(publicOrigin(new Request("https://pawfamilyfreehome.netlify.app/sitemap.xml")), "https://pawfamilyrehoming.com");
+  assert.equal(publicOrigin(new Request("https://www.pawfamilyrehoming.com/adopt/x")), "https://pawfamilyrehoming.com");
+  assert.equal(publicOrigin(new Request("https://deploy-preview-3--pawfamilyfreehome.netlify.app/")), "https://pawfamilyrehoming.com");
+  assert.equal(publicOrigin(new Request("http://localhost:8888/sitemap.xml")), "http://localhost:8888");
+  assert.equal(publicOrigin(new Request("https://evilpawfamilyrehoming.com.attacker.net/")), "https://evilpawfamilyrehoming.com.attacker.net");
+  process.env.SITE_URL = "https://example.org/"; assert.equal(publicOrigin(new Request("http://localhost/")), "https://example.org");
+  process.env.SITE_URL = "javascript:alert(1)"; assert.equal(publicOrigin(new Request("http://localhost/")), "http://localhost");
+  delete process.env.SITE_URL;
 });

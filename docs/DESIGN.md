@@ -4,7 +4,7 @@ Pawfamily is a home breeder. Kittens are raised, litter-trained and socialised a
 
 The site stays neutral on viewings and video calls: it neither promises nor rules them out.
 
-Domain (planned): `pawfamilyfreehome.com`. Hosting: Netlify.
+Domain: `https://pawfamilyrehoming.com` (Porkbun). Every canonical link, share preview and sitemap entry uses it (`publicOrigin` in `lib/site.mjs`; override with the `SITE_URL` env var). Hosting: Netlify.
 
 ---
 

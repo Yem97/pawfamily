@@ -24,7 +24,7 @@ Netlify → your site → **Site configuration → Environment variables → Add
 | `SESSION_SECRET` | The random value from step 1 | ✅ |
 | `RESEND_API_KEY` | From resend.com → API Keys (secret) | Optional: email alerts |
 | `NOTIFY_EMAIL` | Where alerts go (comma-separate several) | Optional: email alerts |
-| `MAIL_FROM` | e.g. `Pawfamily <alerts@pawfamilyfreehome.com>` once the domain is verified in Resend | Optional |
+| `MAIL_FROM` | e.g. `Pawfamily <alerts@pawfamilyrehoming.com>` once the domain is verified in Resend | Optional |
 
 Mark `ADMIN_PASSWORD_HASH`, `SESSION_SECRET` and `RESEND_API_KEY` as **secret**. Never put these values in GitHub or chat.
 
@@ -44,7 +44,7 @@ Then go to **Deploys → Trigger deploy → Deploy site**, because new variables
 1. Create a free account at **resend.com**, using the same email you want alerts sent to.
 2. Create an API key and add it as `RESEND_API_KEY`. Set `NOTIFY_EMAIL` to that same email.
 3. Redeploy. Until a domain is verified in Resend, alerts can only go to the Resend account's own email address, which is fine for owner alerts.
-4. After buying `pawfamilyfreehome.com`, verify it in Resend (Domains), then set `MAIL_FROM` to an address at that domain.
+4. After buying `pawfamilyrehoming.com`, verify it in Resend (Domains), then set `MAIL_FROM` to an address at that domain.
 
 Even without email, every enquiry and message is saved in the dashboard.
 
@@ -52,8 +52,8 @@ Even without email, every enquiry and message is saved in the dashboard.
 
 Alerts to people on the waiting list need emails **from your own domain** (Resend's test sender can only email the account owner):
 
-1. In Resend → **Domains → Add domain** → `pawfamilyfreehome.com`, and add the DNS records it shows (in Netlify DNS if you use it).
-2. Once it shows **Verified**, set `MAIL_FROM` in Netlify, e.g. `Pawfamily <hello@pawfamilyfreehome.com>`, and redeploy.
+1. In Resend → **Domains → Add domain** → `pawfamilyrehoming.com`, and add the DNS records it shows (in Netlify DNS if you use it).
+2. Once it shows **Verified**, set `MAIL_FROM` in Netlify, e.g. `Pawfamily <hello@pawfamilyrehoming.com>`, and redeploy.
 3. From then on, listing a kitten as **Available** emails everyone whose wishes match, once per kitten. Each email has a one-click unsubscribe.
 
 ## 4c. Automatic backups
@@ -62,7 +62,20 @@ Nothing to set up: Netlify runs `netlify/functions/backup.mjs` on the 1st of eve
 
 ## 5. Custom domain
 
-Once `pawfamilyfreehome.com` is bought: Netlify → **Domain management → Add a domain**, and follow the DNS instructions. HTTPS is issued automatically and free.
+`pawfamilyrehoming.com` is registered at **Porkbun** and its DNS stays there (so Porkbun's free email forwarding works).
+
+1. Netlify → **Domain management**: `pawfamilyrehoming.com` is the **primary domain**; `www` redirects to it.
+2. Porkbun → domain → **DNS**: delete the parking records (`pixie`/`uixie.porkbun.com`), keep the `fwd1`/`fwd2.porkbun.com` MX records, and add:
+
+| Type | Host | Answer |
+|---|---|---|
+| ALIAS | *(empty)* | `apex-loadbalancer.netlify.com` (or an A record `75.2.60.5`) |
+| CNAME | `www` | `pawfamilyfreehome.netlify.app` |
+
+3. Porkbun → **Email Forwarding**: `hello` → the owner's inbox. Put `hello@pawfamilyrehoming.com` in Dashboard → Settings.
+4. HTTPS is issued automatically once DNS is verified.
+
+Canonical links, share previews and the sitemap always use `https://pawfamilyrehoming.com` (set in `netlify/functions/lib/site.mjs`; a `SITE_URL` environment variable overrides it). Once the domain shows HTTPS, a redirect rule in `netlify.toml` sends `pawfamilyfreehome.netlify.app` visitors to the main domain.
 
 ## Changing the password (owner)
 

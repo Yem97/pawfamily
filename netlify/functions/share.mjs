@@ -1,7 +1,7 @@
 // Pet pages (/adopt/<slug>) are served with that pet's title, description and photo in the HTML <head>,
 // so Facebook, WhatsApp and Google show a proper preview. The page itself is the normal single-page app.
 import { getStores } from "./lib/store.mjs";
-import { getSettings, listedAnimals, feeOf, speciesWords } from "./lib/site.mjs";
+import { getSettings, listedAnimals, feeOf, speciesWords, publicOrigin } from "./lib/site.mjs";
 
 export const config = { path: "/adopt/:slug" };
 
@@ -50,7 +50,7 @@ export default async function share(req, context) {
     const { data } = await getStores();
     const [settings, animals] = await Promise.all([getSettings(data), listedAnimals(data)]);
     const animal = animals.find(a => a.slug === slug);
-    if (animal) html = petHead(shell, { animal, settings, origin: url.origin });
+    if (animal) html = petHead(shell, { animal, settings, origin: publicOrigin(req) });
   } catch (e) {
     console.error("share: could not load pet data", e?.message); // fall back to the plain page
   }

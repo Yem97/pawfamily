@@ -1,6 +1,17 @@
 // Shared site data helpers used by the API, the share-preview function, SEO and backups.
 import { listRecords } from "./store.mjs";
 
+// The site's one official address. Google, Facebook/WhatsApp previews and the sitemap always use it,
+// whichever address a page was opened on. SITE_URL (Netlify env var) overrides it if the domain ever changes.
+export const PRIMARY_ORIGIN = "https://pawfamilyrehoming.com";
+const PRODUCTION_HOSTS = /(^|\.)pawfamilyrehoming\.com$|\.netlify\.app$/i;
+export function publicOrigin(req) {
+  const url = new URL(req.url);
+  const env = (globalThis.Netlify?.env?.get?.("SITE_URL") ?? process.env.SITE_URL ?? "").trim().replace(/\/+$/, "");
+  if (env && /^https:\/\/[a-z0-9.-]+$/i.test(env)) return env;
+  return PRODUCTION_HOSTS.test(url.hostname) ? PRIMARY_ORIGIN : url.origin; // local dev and tests keep their own address
+}
+
 export const DEFAULT_SETTINGS = {
   rescueName: "Pawfamily",
   tagline: "Home-raised kittens",

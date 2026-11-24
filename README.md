@@ -3,7 +3,7 @@
 Website and owner dashboard for **Pawfamily**, a home breeder of kittens. Kittens are raised and litter-trained at home, then reserved or bought for a kitten fee and delivered personally by the breeder with all ownership documents.
 
 - **Live site:** deployed automatically to Netlify from `main`
-- **Planned domain:** `pawfamilyfreehome.com`
+- **Domain:** `https://pawfamilyrehoming.com` (registered at Porkbun, DNS at Porkbun)
 - **Owner dashboard:** `/admin/`
 
 ## What it does

@@ -69,7 +69,7 @@ await admin.waitForSelector(".a-head h1"); step("admin sign-in rejects wrong pas
 // 4. Settings
 await admin.goto(BASE + "/admin/#settings"); await admin.waitForSelector("#settings");
 await admin.fill("#settings-town", "Leeds"); await admin.fill("#settings-region", "West Yorkshire");
-await admin.fill("#settings-email", "hello@pawfamilyfreehome.com"); await admin.fill("#settings-defaultFee", "150"); await admin.fill("#settings-defaultReservationFee", "50");
+await admin.fill("#settings-email", "hello@pawfamilyrehoming.com"); await admin.fill("#settings-defaultFee", "150"); await admin.fill("#settings-defaultReservationFee", "50");
 await admin.fill("#settings-announcement", "Kitten season: new arrivals every week");
 await admin.fill("#settings-facebookUrl", "javascript:alert(1)"); await admin.click("#settings button[type=submit]");
 await admin.waitForSelector("#err-settings-facebookUrl:not(:empty)"); step("settings reject unsafe links");

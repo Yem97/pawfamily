@@ -1,6 +1,6 @@
-// /sitemap.xml and /robots.txt, generated for whichever domain the site is served on.
+// /sitemap.xml and /robots.txt, always pointing at the site's official address (publicOrigin).
 import { getStores } from "./lib/store.mjs";
-import { listedAnimals } from "./lib/site.mjs";
+import { listedAnimals, publicOrigin } from "./lib/site.mjs";
 import { listRecords } from "./lib/store.mjs";
 
 export const config = { path: ["/sitemap.xml", "/robots.txt"] };
@@ -10,7 +10,7 @@ const PAGES = [["/", "daily", "1.0"], ["/adopt", "daily", "0.9"], ["/how-to-adop
 const xmlEsc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
 
 export default async function seo(req) {
-  const url = new URL(req.url), origin = url.origin;
+  const url = new URL(req.url), origin = publicOrigin(req);
   if (url.pathname === "/robots.txt") {
     return new Response(`User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\n\nSitemap: ${origin}/sitemap.xml\n`,
       { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" } });
